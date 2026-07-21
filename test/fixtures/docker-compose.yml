@@ -1,0 +1,11 @@
+name: fixture-project
+
+services:
+  web:
+    image: nginx:1.27-alpine
+    working_dir: /usr/share/nginx/html
+  api:
+    image: node:20-bookworm-slim
+    working_dir: /app
+  db:
+    image: postgres:16-alpine

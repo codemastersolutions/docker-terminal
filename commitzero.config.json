@@ -1,0 +1,27 @@
+{
+  "types": [
+    "feat",
+    "fix",
+    "docs",
+    "style",
+    "refactor",
+    "perf",
+    "test",
+    "build",
+    "ci",
+    "chore",
+    "revert"
+  ],
+  "scopes": [],
+  "requireScope": false,
+  "maxSubjectLength": 72,
+  "maxFileSize": "2MB",
+  "allowBreaking": true,
+  "footerKeywords": ["BREAKING CHANGE", "Closes", "Refs"],
+  "preCommitCommands": ["npm run typecheck", "npm run test", "npm run build"],
+  "preCommitTimeout": "3m",
+  "versionCheckEnabled": true,
+  "versionCheckPeriod": "daily",
+  "language": "en",
+  "uiAltScreen": true
+}

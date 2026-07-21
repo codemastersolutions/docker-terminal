@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+# CommitZero managed block START
+# prepare-commit-msg hook (placeholder)
+# Keeps default behavior; may pre-fill templates in the future.
+# CommitZero managed block END

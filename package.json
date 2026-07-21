@@ -1,0 +1,110 @@
+{
+  "name": "@codemastersolutions/docker-terminal",
+  "displayName": "Docker Terminal",
+  "description": "Open a VS Code terminal into a docker-compose service using the container's default login shell.",
+  "version": "0.1.0",
+  "publisher": "codemastersolutions",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codemastersolutions/docker-terminal.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "docker",
+    "docker-compose",
+    "terminal",
+    "shell"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/docker-compose.{yml,yaml}",
+    "workspaceContains:**/compose.{yml,yaml}",
+    "workspaceContains:**/docker-compose.yml",
+    "workspaceContains:**/docker-compose.yaml",
+    "workspaceContains:**/compose.yml",
+    "workspaceContains:**/compose.yaml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "compose.openShell",
+        "title": "Open Shell in Service",
+        "category": "Docker Terminal"
+      }
+    ],
+    "configuration": {
+      "title": "Docker Terminal",
+      "properties": {
+        "composeTerminal.dockerCommand": {
+          "type": "string",
+          "default": "docker",
+          "description": "Path or name of the docker CLI."
+        },
+        "composeTerminal.preferComposeV2": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use 'docker compose' (v2) before falling back to 'docker-compose' (v1)."
+        },
+        "composeTerminal.composeFiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Explicit compose file paths. Empty = auto-detect in workspace roots."
+        },
+        "composeTerminal.terminalName": {
+          "type": "string",
+          "default": "{service} • {project}",
+          "description": "Pattern for terminal name. Placeholders: {service}, {project}."
+        },
+        "composeTerminal.clearTerminalAfterMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "Milliseconds after sending 'docker compose exec' to send a clear-screen sequence. Set to 0 to disable. Hides the host shell echo and prompt before the container prompt."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package",
+    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts",
+    "test:integration": "tsx test/compose-cli.smoke.ts",
+    "test:e2e": "tsx test/e2e.smoke.ts",
+    "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "release:version": "node scripts/bump-version.js",
+    "commitzero": "commitzero",
+    "commitzero:install": "npm exec commitzero install-hooks",
+    "commitzero:uninstall": "npm exec commitzero uninstall-hooks",
+    "commit": "npm run commitzero -- commit --add",
+    "commit:push": "npm run commitzero -- commit --add --push"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@codemastersolutions/commitzero": "^0.0.53",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.4.5",
+    "vsce": "^2.15.0"
+  },
+  "allowScripts": {
+    "@codemastersolutions/commitzero@0.0.53": true
+  }
+}

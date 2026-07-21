@@ -1,0 +1,89 @@
+#!/bin/sh
+set -eu
+START_MARK='# CommitZero managed block START'
+END_MARK='# CommitZero managed block END'
+# CommitZero managed block START
+# Validate commit message using CommitZero
+if [ -x "./node_modules/.bin/commitzero" ]; then
+  ./node_modules/.bin/commitzero check
+elif [ -f "./node_modules/@codemastersolutions/commitzero/dist/cjs/cli/index.js" ]; then
+  node ./node_modules/@codemastersolutions/commitzero/dist/cjs/cli/index.js check
+elif node -e "try{require.resolve('@codemastersolutions/commitzero/dist/cjs/cli/index.js');process.exit(0);}catch(e){process.exit(1)}" >/dev/null 2>&1; then
+  node "$(node -p 'require.resolve("@codemastersolutions/commitzero/dist/cjs/cli/index.js")')" check
+else
+  # Auto-clean managed blocks from hooks to avoid future interruptions
+  cleanup_file() {
+    F="$1"
+    if [ -f "$F" ]; then
+      awk -v s="$START_MARK" -v e="$END_MARK" '
+        BEGIN { skip=0 }
+        index($0, s) { skip=1; next }
+        index($0, e) { skip=0; next }
+        { if (!skip) print }
+      ' "$F" > "$F.tmp" && mv "$F.tmp" "$F" && chmod +x "$F" || true
+    fi
+  }
+  cleanup_file ".git/hooks/commit-msg"
+  cleanup_file ".git/hooks/prepare-commit-msg"
+
+  # If hooks don't exist or managed blocks were removed, stay quiet and allow commit
+  if [ ! -f ".git/hooks/commit-msg" ] && [ ! -f ".git/hooks/prepare-commit-msg" ]; then
+    exit 0
+  fi
+  if ! grep -q "$START_MARK" ".git/hooks/commit-msg" 2>/dev/null && \
+     ! grep -q "$START_MARK" ".git/hooks/prepare-commit-msg" 2>/dev/null; then
+    exit 0
+  fi
+
+  # Detect package manager and recommend proper install command (shown only if cleanup failed)
+  PM="npm"
+  if [ -f "./pnpm-lock.yaml" ]; then
+    PM="pnpm"
+  elif [ -f "./yarn.lock" ]; then
+    PM="yarn"
+  elif [ -f "./bun.lockb" ]; then
+    PM="bun"
+  fi
+  INSTALL_CMD="npm i -D @codemastersolutions/commitzero"
+  if [ "$PM" = "pnpm" ]; then
+    INSTALL_CMD="pnpm add -D @codemastersolutions/commitzero"
+  elif [ "$PM" = "yarn" ]; then
+    INSTALL_CMD="yarn add -D @codemastersolutions/commitzero"
+  elif [ "$PM" = "bun" ]; then
+    INSTALL_CMD="bun add -d @codemastersolutions/commitzero"
+  fi
+
+  # If managed blocks still remain (cleanup failed), show guidance but do not block
+  # Detect language: env -> OS locale
+  LANG_CZ="en"
+  if [ -n "${COMMITZERO_LANG:-}" ]; then
+    case "${COMMITZERO_LANG}" in
+      pt|pt-BR|pt_br) LANG_CZ="pt" ;;
+      es|es-ES|es_es) LANG_CZ="es" ;;
+      *) LANG_CZ="en" ;;
+    esac
+  else
+    case "${LANG:-}" in
+      pt_BR*) LANG_CZ="pt" ;;
+      es_*) LANG_CZ="es" ;;
+      *) LANG_CZ="en" ;;
+    esac
+  fi
+
+  case "$LANG_CZ" in
+    pt)
+      echo "CommitZero não encontrado. Instale com '$INSTALL_CMD'." 1>&2
+      echo "Para remover manualmente este hook, remova as linhas entre '# CommitZero managed block START' e '# CommitZero managed block END' em '.git/hooks/commit-msg' e '.git/hooks/prepare-commit-msg'." 1>&2
+      ;;
+    es)
+      echo "CommitZero no encontrado. Instala con '$INSTALL_CMD'." 1>&2
+      echo "Para eliminar este hook manualmente, elimina las líneas entre '# CommitZero managed block START' y '# CommitZero managed block END' en '.git/hooks/commit-msg' y '.git/hooks/prepare-commit-msg'." 1>&2
+      ;;
+    *)
+      echo "CommitZero not found. Install with '$INSTALL_CMD'." 1>&2
+      echo "To remove this hook manually, delete lines between '# CommitZero managed block START' and '# CommitZero managed block END' in '.git/hooks/commit-msg' and '.git/hooks/prepare-commit-msg'." 1>&2
+      ;;
+  esac
+  exit 0
+fi
+# CommitZero managed block END

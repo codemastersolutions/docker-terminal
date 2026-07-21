@@ -1,0 +1,32 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps(dev)"
+    labels:
+      - "dependencies"
+    # Group minor/patch updates together so we don't drown in PRs; major
+    # bumps still get their own PR so they get human review.
+    groups:
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    # Pin every GitHub Actions reference to its commit SHA — supply-chain
+    # hardening on top of the version tags we already use in the workflows.
+    # When Dependabot opens a PR for this group, replace the @vX.Y.Z tag with
+    # the @<full-sha> # vX.Y.Z form it suggests.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"

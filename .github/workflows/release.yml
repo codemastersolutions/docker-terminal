@@ -1,0 +1,151 @@
+name: Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# Single global group prevents two PRs merged in rapid succession from
+# racing on the same .vsix publish (vsce refuses duplicate versions).
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, test, version-bump, publish and tag
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Least privilege: only what the job actually needs.
+    # - `contents: write` → push the release commit and tag.
+    # - `id-token: write` is intentionally NOT requested; vsce publishes via PAT.
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install ovsx (Open VSX CLI)
+        run: npm install --no-save ovsx
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies (fail on high/critical CVEs)
+        # --omit=dev excludes dev-only tools (vsce, tsx, esbuild, typescript)
+        # whose CVEs do not affect end users — only the shipped extension code
+        # matters for the security guarantee.
+        run: npm audit --audit-level=high --omit=dev
+
+      # ─── Tests ───────────────────────────────────────────────────────────
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Start Docker daemon
+        run: |
+          if ! docker info >/dev/null 2>&1; then
+            sudo systemctl start docker || sudo service docker start || true
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              if docker info >/dev/null 2>&1; then break; fi
+              sleep 2
+            done
+          fi
+          docker --version
+          docker compose version
+
+      - name: Unit tests (no Docker required)
+        run: npm run test:unit
+
+      - name: Integration tests (requires Docker CLI)
+        run: npm run test:integration
+
+      - name: E2E tests (requires Docker daemon)
+        run: npm run test:e2e
+
+      # ─── Version bump ────────────────────────────────────────────────────
+      - name: Bump version (conventional commits → semver)
+        id: bump
+        run: node scripts/bump-version.js
+
+      - name: Show new version
+        run: |
+          echo "Next version: ${{ steps.bump.outputs.version }}"
+          echo "Bump type:    ${{ steps.bump.outputs.bump_type }}"
+
+      # ─── Build ───────────────────────────────────────────────────────────
+      - name: Build
+        run: npm run build
+
+      - name: Package .vsix
+        id: package
+        run: |
+          VSIX_NAME="docker-terminal-${{ steps.bump.outputs.version }}.vsix"
+          npx vsce package --no-dependencies --out "./${VSIX_NAME}"
+          echo "vsix_path=${VSIX_NAME}" >> "$GITHUB_OUTPUT"
+          ls -lh "./${VSIX_NAME}"
+
+      # ─── Marketplace publish ─────────────────────────────────────────────
+      - name: Publish to VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx vsce publish --packagePath "${{ steps.package.outputs.vsix_path }}" --pat "$VSCE_PAT"
+
+      - name: Publish to Open VSX Registry
+        if: env.OVSX_PAT != ''
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          # open-vsx.org also serves VS Code forks like Cursor, Windsurf,
+          # VSCodium, GitHub Codespaces and Eclipse Theia.
+          npx ovsx publish "${{ steps.package.outputs.vsix_path }}" -p codemastersolutions -t "$OVSX_PAT"
+        continue-on-error: true
+
+      # NOTE: TRAE Marketplace (marketplace.trae.ai) does not expose a stable
+      # CLI yet. When ByteDance ships one, add a third publish step here:
+      #
+      #   - name: Publish to TRAE Marketplace
+      #     if: env.TRAE_PAT != ''
+      #     env:
+      #       TRAE_PAT: ${{ secrets.TRAE_PAT }}
+      #     run: trae-cli publish "${{ steps.package.outputs.vsix_path }}" --token "$TRAE_PAT"
+
+      # ─── Tag + Release ───────────────────────────────────────────────────
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit version bump
+        run: |
+          git add package.json
+          if git diff --cached --quiet; then
+            echo "No version changes to commit."
+          else
+            git commit -m "chore(release): ${{ steps.bump.outputs.version }} [skip ci]"
+            git push origin main
+          fi
+
+      - name: Create git tag
+        run: |
+          git tag -f "v${{ steps.bump.outputs.version }}" HEAD
+          git push origin "v${{ steps.bump.outputs.version }}" --force
+
+      - name: Create GitHub Release (with .vsix asset)
+        uses: softprops/action-gh-release@v2.0.5
+        with:
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: "v${{ steps.bump.outputs.version }}"
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: ${{ steps.package.outputs.vsix_path }}
