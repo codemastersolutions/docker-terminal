@@ -92,7 +92,7 @@
     "commit:push": "npm run commitzero -- commit --add --push"
   },
   "dependencies": {
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^5.2.1"
   },
   "devDependencies": {
     "@codemastersolutions/commitzero": "^0.0.53",
