@@ -142,7 +142,7 @@ jobs:
           git push origin "v${{ steps.bump.outputs.version }}" --force
 
       - name: Create GitHub Release (with .vsix asset)
-        uses: softprops/action-gh-release@v2.0.5
+        uses: softprops/action-gh-release@v3.0.2
         with:
           tag_name: v${{ steps.bump.outputs.version }}
           name: "v${{ steps.bump.outputs.version }}"
