@@ -1,4 +1,4 @@
-# Docker Terminal
+<img src="./assets/banner-readme.png">
 
 A VS Code extension that opens a terminal into a `docker-compose` service using the **container's default login shell** (read from `/etc/passwd`), not a hardcoded `bash`/`sh`.
 
@@ -39,18 +39,18 @@ This means Alpine-based containers get `ash`, Debian/Ubuntu get `bash`, and cust
 
 ## Settings
 
-| Setting | Default | Description |
-|---|---|---|
-| `composeTerminal.dockerCommand` | `docker` | Path or name of the docker CLI |
-| `composeTerminal.preferComposeV2` | `true` | Use `docker compose` before falling back to `docker-compose` |
-| `composeTerminal.composeFiles` | `[]` | Explicit compose file paths (empty = auto-detect in workspace roots) |
-| `composeTerminal.terminalName` | `{service} • {project}` | Terminal name pattern. Placeholders: `{service}`, `{project}` |
-| `composeTerminal.clearTerminalAfterMs` | `1500` | ms to wait before sending clear-screen ANSI to hide host shell noise. Set to `0` to disable |
+| Setting                                | Default                 | Description                                                                                 |
+| -------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------- |
+| `composeTerminal.dockerCommand`        | `docker`                | Path or name of the docker CLI                                                              |
+| `composeTerminal.preferComposeV2`      | `true`                  | Use `docker compose` before falling back to `docker-compose`                                |
+| `composeTerminal.composeFiles`         | `[]`                    | Explicit compose file paths (empty = auto-detect in workspace roots)                        |
+| `composeTerminal.terminalName`         | `{service} • {project}` | Terminal name pattern. Placeholders: `{service}`, `{project}`                               |
+| `composeTerminal.clearTerminalAfterMs` | `1500`                  | ms to wait before sending clear-screen ANSI to hide host shell noise. Set to `0` to disable |
 
 ## Commands
 
-| Command | Title |
-|---|---|
+| Command             | Title                                  |
+| ------------------- | -------------------------------------- |
 | `compose.openShell` | Docker Terminal: Open Shell in Service |
 
 ## Build
