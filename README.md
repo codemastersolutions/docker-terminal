@@ -1,6 +1,6 @@
 <img src="./assets/banner-readme.png">
 
-A VS Code extension that opens a terminal into a `docker-compose` service using the **container's default login shell** (read from `/etc/passwd`), not a hardcoded `bash`/`sh`.
+A extension that opens a terminal into a `docker-compose` service using the **container's default login shell** (read from `/etc/passwd`), not a hardcoded `bash`/`sh`.
 
 > 🌐 **Languages / Idiomas / Línguas:** [English](README.md) · [Português (Brasil)](README.pt-br.md) · [Español](README.es.md)
 
@@ -45,7 +45,7 @@ This means Alpine-based containers get `ash`, Debian/Ubuntu get `bash`, and cust
 | `composeTerminal.preferComposeV2`      | `true`                  | Use `docker compose` before falling back to `docker-compose`                                |
 | `composeTerminal.composeFiles`         | `[]`                    | Explicit compose file paths (empty = auto-detect in workspace roots)                        |
 | `composeTerminal.terminalName`         | `{service} • {project}` | Terminal name pattern. Placeholders: `{service}`, `{project}`                               |
-| `composeTerminal.clearTerminalAfterMs` | `1500`                  | ms to wait before sending clear-screen ANSI to hide host shell noise. Set to `0` to disable |
+| `composeTerminal.clearOnExit`          | `true`                  | Bracket `docker compose exec` with a host-shell cleanup command (`clear` on Linux/macOS, `cls` on Windows) — one before attach and one after exit — so the VS Code terminal is cleared before you enter and after you leave the container. Set to `false` to disable |
 
 ## Commands
 

@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { Disposable, Terminal, window, workspace } from 'vscode';
 import { isValidServiceName, isValidShellPath } from '../compose/validation';
+import { getHostClearCommand } from '../host/clearCommand';
 
 export interface OpenShellOptions {
   name: string;
@@ -9,11 +10,8 @@ export interface OpenShellOptions {
   shell: string;
 }
 
-const CLEAR_SEQUENCE = '\x1b[H\x1b[2J\x1b[3J';
-
 export class TerminalManager implements Disposable {
   private readonly terminals = new Map<string, Terminal>();
-  private readonly clearTimers = new Map<string, NodeJS.Timeout>();
 
   open(opts: OpenShellOptions): Terminal {
     const key = `${opts.composeFilePath}::${opts.service}`;
@@ -38,7 +36,7 @@ export class TerminalManager implements Disposable {
 
     const config = workspace.getConfiguration('composeTerminal');
     const dockerCommand = config.get<string>('dockerCommand') ?? 'docker';
-    const clearAfterMs = config.get<number>('clearTerminalAfterMs') ?? 1500;
+    const clearOnExit = config.get<boolean>('clearOnExit') ?? true;
     const cwd = path.dirname(opts.composeFilePath);
 
     const terminal = window.createTerminal({
@@ -48,24 +46,20 @@ export class TerminalManager implements Disposable {
 
     // Service and shell are both restricted to [a-zA-Z0-9/._+-], so the
     // double quotes around them are sufficient — no further escaping needed.
-    terminal.sendText(`${dockerCommand} compose exec -it "${opts.service}" "${opts.shell}"`);
+    // The bracketing clear commands run in the VS Code terminal's shell (not
+    // the container): the leading one wipes host noise before the exec
+    // attaches, and the trailing one wipes the buffer once the user exits.
+    // Both are gated by `clearOnExit` and selected by host OS — `clear` on
+    // POSIX, `cls` on Windows.
+    const clearCmd = clearOnExit ? getHostClearCommand() : null;
+    const execCommand = `${dockerCommand} compose exec -it "${opts.service}" "${opts.shell}"`;
+    const fullCommand = clearCmd
+      ? `${clearCmd} && ${execCommand} && ${clearCmd}`
+      : execCommand;
+    terminal.sendText(fullCommand);
     terminal.show();
 
     this.terminals.set(key, terminal);
-
-    // Schedule a clear-screen ANSI sequence. It is sent through docker exec
-    // into the container's PTY, which interprets it and clears the visible
-    // scrollback — removing the message, echoed host command, host prompt,
-    // and the blank gap before the container prompt.
-    if (clearAfterMs > 0) {
-      const timer = setTimeout(() => {
-        this.clearTimers.delete(key);
-        if (this.isAlive(terminal)) {
-          terminal.sendText(CLEAR_SEQUENCE, false);
-        }
-      }, clearAfterMs);
-      this.clearTimers.set(key, timer);
-    }
 
     return terminal;
   }
@@ -75,10 +69,6 @@ export class TerminalManager implements Disposable {
   }
 
   dispose(): void {
-    for (const timer of this.clearTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.clearTimers.clear();
     for (const terminal of this.terminals.values()) {
       terminal.dispose();
     }

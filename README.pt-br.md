@@ -1,6 +1,6 @@
 <img src="./assets/banner-readme.png">
 
-Uma extensão do VS Code que abre um terminal em um serviço do `docker-compose` usando o **shell padrão de login do container** (lido de `/etc/passwd`), e não um `bash`/`sh` fixo no código.
+Uma extensão que abre um terminal em um serviço do `docker-compose` usando o **shell padrão de login do container** (lido de `/etc/passwd`), e não um `bash`/`sh` fixo no código.
 
 > 🌐 **Idiomas:** [English](README.md) · [Português (Brasil)](README.pt-br.md) · [Español](README.es.md)
 
@@ -39,13 +39,13 @@ Isso significa que containers baseados em Alpine recebem `ash`, Debian/Ubuntu re
 
 ## Configurações
 
-| Configuração                           | Padrão                  | Descrição                                                                                                                               |
-| -------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `composeTerminal.dockerCommand`        | `docker`                | Caminho ou nome do docker CLI                                                                                                           |
-| `composeTerminal.preferComposeV2`      | `true`                  | Usar `docker compose` antes de cair no fallback `docker-compose`                                                                        |
-| `composeTerminal.composeFiles`         | `[]`                    | Caminhos explícitos de arquivos compose (vazio = autodetectar nas raízes do workspace)                                                  |
-| `composeTerminal.terminalName`         | `{service} • {project}` | Padrão de nome do terminal. Placeholders: `{service}`, `{project}`                                                                      |
-| `composeTerminal.clearTerminalAfterMs` | `1500`                  | ms para aguardar antes de enviar a sequência ANSI de limpar a tela, escondendo o ruído do shell do host. Defina como `0` para desativar |
+| Configuração                           | Padrão                  | Descrição                                                                                                                                                                                |
+| -------------------------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `composeTerminal.dockerCommand`        | `docker`                | Caminho ou nome do docker CLI                                                                                                                                                            |
+| `composeTerminal.preferComposeV2`      | `true`                  | Usar `docker compose` antes de cair no fallback `docker-compose`                                                                                                                         |
+| `composeTerminal.composeFiles`         | `[]`                    | Caminhos explícitos de arquivos compose (vazio = autodetectar nas raízes do workspace)                                                                                                   |
+| `composeTerminal.terminalName`         | `{service} • {project}` | Padrão de nome do terminal. Placeholders: `{service}`, `{project}`                                                                                                                       |
+| `composeTerminal.clearOnExit`          | `true`                  | Enquadra o `docker compose exec` com um comando de limpeza do shell do host (`clear` em Linux/macOS, `cls` no Windows) — um antes de anexar e outro após sair — para que o terminal do VS Code seja limpo antes de entrar e depois de sair do container. Defina como `false` para desativar |
 
 ## Comandos
 

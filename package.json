@@ -1,7 +1,7 @@
 {
   "name": "docker-terminal",
   "displayName": "Docker Terminal",
-  "description": "Open a VS Code terminal into a docker-compose service using the container's default login shell.",
+  "description": "Open a terminal into a docker-compose service using the container's default login shell.",
   "version": "0.1.0",
   "publisher": "codemastersolutions",
   "license": "MIT",
@@ -10,7 +10,7 @@
     "url": "https://github.com/codemastersolutions/docker-terminal.git"
   },
   "engines": {
-    "vscode": "^1.125.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
@@ -42,6 +42,14 @@
         "category": "Docker Terminal"
       }
     ],
+    "keybindings": [
+      {
+        "command": "compose.openShell",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "workspaceFolderCount > 0"
+      }
+    ],
     "configuration": {
       "title": "Docker Terminal",
       "properties": {
@@ -68,21 +76,22 @@
           "default": "{service} • {project}",
           "description": "Pattern for terminal name. Placeholders: {service}, {project}."
         },
-        "composeTerminal.clearTerminalAfterMs": {
-          "type": "number",
-          "default": 1500,
-          "description": "Milliseconds after sending 'docker compose exec' to send a clear-screen sequence. Set to 0 to disable. Hides the host shell echo and prompt before the container prompt."
+        "composeTerminal.clearOnExit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Bracket the `docker compose exec` call with a host-shell cleanup command — one before attach, one after exit — so the VS Code terminal is cleared before you enter and after you leave the container. Uses `clear` on Linux/macOS and `cls` on Windows."
         }
       }
     }
   },
   "scripts": {
     "clean": "rm -rf dist docker-terminal*.vsix",
+    "prebuild": "npm run clean && npm run typecheck && npm run test",
     "build": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
     "typecheck": "tsc --noEmit",
-    "package": "npm run clean && npm run build && vsce package",
-    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts",
+    "package": "npm run build && vsce package",
+    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts",
     "test:integration": "tsx test/compose-cli.smoke.ts",
     "test:e2e": "tsx test/e2e.smoke.ts",
     "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
@@ -100,7 +109,7 @@
     "@codemastersolutions/commitzero": "^0.0.53",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.1.1",
-    "@types/vscode": "^1.125.0",
+    "@types/vscode": "1.85.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",

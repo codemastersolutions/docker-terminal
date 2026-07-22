@@ -1,6 +1,6 @@
 <img src="./assets/banner-readme.png">
 
-Una extensión de VS Code que abre un terminal en un servicio de `docker-compose` usando el **shell de inicio de sesión predeterminado del contenedor** (leído desde `/etc/passwd`), no un `bash`/`sh` fijo en el código.
+Una extensión que abre un terminal en un servicio de `docker-compose` usando el **shell de inicio de sesión predeterminado del contenedor** (leído desde `/etc/passwd`), no un `bash`/`sh` fijo en el código.
 
 > 🌐 **Idiomas:** [English](README.md) · [Português (Brasil)](README.pt-br.md) · [Español](README.es.md)
 
@@ -39,13 +39,13 @@ Esto significa que los contenedores basados en Alpine obtienen `ash`, Debian/Ubu
 
 ## Configuración
 
-| Configuración                          | Predeterminado          | Descripción                                                                                                                                     |
-| -------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `composeTerminal.dockerCommand`        | `docker`                | Ruta o nombre del docker CLI                                                                                                                    |
-| `composeTerminal.preferComposeV2`      | `true`                  | Usar `docker compose` antes de caer al fallback `docker-compose`                                                                                |
-| `composeTerminal.composeFiles`         | `[]`                    | Rutas explícitas de archivos compose (vacío = autodetectar en las raíces del workspace)                                                         |
-| `composeTerminal.terminalName`         | `{service} • {project}` | Patrón del nombre del terminal. Placeholders: `{service}`, `{project}`                                                                          |
-| `composeTerminal.clearTerminalAfterMs` | `1500`                  | ms a esperar antes de enviar la secuencia ANSI para limpiar la pantalla, ocultando el ruido del shell del host. Define como `0` para desactivar |
+| Configuración                          | Predeterminado          | Descripción                                                                                                                                                                                                          |
+| -------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `composeTerminal.dockerCommand`        | `docker`                | Ruta o nombre del docker CLI                                                                                                                                                                                         |
+| `composeTerminal.preferComposeV2`      | `true`                  | Usar `docker compose` antes de caer al fallback `docker-compose`                                                                                                                                                     |
+| `composeTerminal.composeFiles`         | `[]`                    | Rutas explícitas de archivos compose (vacío = autodetectar en las raíces del workspace)                                                                                                                              |
+| `composeTerminal.terminalName`         | `{service} • {project}` | Patrón del nombre del terminal. Placeholders: `{service}`, `{project}`                                                                                                                                               |
+| `composeTerminal.clearOnExit`          | `true`                  | Enmarca el `docker compose exec` con un comando de limpieza del shell del host (`clear` en Linux/macOS, `cls` en Windows): uno antes de conectar y otro después de salir, para que el terminal de VS Code quede limpio antes de entrar y al salir del contenedor. Define como `false` para desactivar |
 
 ## Comandos
 
