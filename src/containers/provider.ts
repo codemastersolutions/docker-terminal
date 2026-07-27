@@ -15,12 +15,14 @@ import { ContainerTreeItem } from './types';
 const REFRESH_DEBOUNCE_MS = 200;
 
 /**
- * Sidebar tree source for the **Running Containers** view.
+ * Sidebar tree source for the **Containers** view.
  *
- * Sources from `docker ps` directly so a workspace without any
- * docker-compose.{yml,yaml} still lists every container running on the host.
- * Refreshing is debounced to coalesce repeated clicks while a previous load is
- * still in flight.
+ * Sources from `docker ps -a` so a workspace without any
+ * docker-compose.{yml,yaml} still lists every container on the host — running
+ * or stopped. The per-row `.State` column decides which lifecycle icons
+ * (`Start` / `Stop` / `Restart` / `Logs`) appear via `contextValue`.
+ * Refreshing is debounced to coalesce repeated clicks while a previous load
+ * is still in flight.
  */
 export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem> {
   private readonly _onDidChange = new EventEmitter<void>();
@@ -58,33 +60,38 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
   }
 
   getTreeItem(element: ContainerTreeItem): TreeItem {
+    const running = element.info.state === 'running';
     const ti = new TreeItem(element.info.name, TreeItemCollapsibleState.None);
-    ti.description = element.info.image || element.info.id;
+    ti.description = `${element.info.image || element.info.id} • ${element.info.state || 'unknown'}`;
     const tip = new MarkdownString(
       `**${element.info.name}**\n\n` +
         `\`${element.info.id}\`\n\n` +
         `image: \`${element.info.image}\`\n\n` +
-        `status: ${element.info.status}\n\n` +
-        `_Click to attach a shell_`
+        `state: **${element.info.state || 'unknown'}**\n\n` +
+        `status: ${element.info.status}`
     );
     tip.isTrusted = { enabledCommands: ['composeTerminal.attachContainer'] };
     ti.tooltip = tip;
-    ti.iconPath = new ThemeIcon('container');
-    ti.contextValue = 'runningContainer';
-    ti.command = {
-      command: 'composeTerminal.attachContainer',
-      title: 'Open Shell in Container',
-      arguments: [element.info]
-    };
+    ti.iconPath = new ThemeIcon(running ? 'container' : 'debug-stop');
+    // Two context values drive per-row menu visibility:
+    //   runningContainer  → Stop / Restart / Logs visible, Start hidden
+    //   stoppedContainer  → Start visible, the rest hidden
+    ti.contextValue = running ? 'runningContainer' : 'stoppedContainer';
+    // Row click intentionally disabled — actions are exposed only via the
+    // inline icons in `package.json` `view/item/context` so the user always
+    // sees what they're triggering.
     return ti;
   }
 
   private async load(): Promise<void> {
     try {
-      const list = await this.docker.listRunningContainers();
+      const list = await this.docker.listContainers();
       this.items = list.map((c) => new ContainerTreeItem(c));
       this.errorMessage = null;
-      this.log.appendLine(`[info] refresh: ${list.length} running container(s)`);
+      const running = list.filter((c) => c.state === 'running').length;
+      this.log.appendLine(
+        `[info] refresh: ${list.length} container(s) (${running} running)`
+      );
     } catch (err) {
       this.items = [];
       this.errorMessage = err instanceof Error ? err.message : String(err);
@@ -99,7 +106,7 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
     if (this.errorMessage) {
       this.view.message = `$(error) ${this.errorMessage}`;
     } else if (this.items.length === 0) {
-      this.view.message = 'No running containers. Start one with `docker compose up` or `docker run`.';
+      this.view.message = 'No containers. Start one with `docker compose up` or `docker run`.';
     } else {
       this.view.message = undefined;
     }

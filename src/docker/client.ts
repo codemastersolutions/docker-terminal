@@ -8,6 +8,13 @@ export interface ContainerInfo {
   name: string;
   image: string;
   status: string;
+  /**
+   * Docker state string: `running`, `exited`, `paused`, `restarting`,
+   * `dead`, `created`. Lower-cased and trimmed. Used by the tree view to
+   * decide which lifecycle icons (`Start` / `Stop` / `Restart` / `Logs`)
+   * should be enabled.
+   */
+  state: string;
 }
 
 const MAX_ERROR_CHARS = 500;
@@ -143,15 +150,27 @@ export class DockerClient {
   }
 
   /**
-   * List every running container on the host (`docker ps --no-trunc`), regardless
-   * of whether it was started by docker compose. Used by the sidebar tree view.
+   * Run a top-level `docker <args...>` invocation (no `exec` subcommand).
+   * Used by container lifecycle commands (`stop`, `restart`, `start`) and by
+   * the logs tail opener. Validates the container ref first so an attacker
+   * can't smuggle CLI flags through a malicious sidebar argument.
    */
-  async listRunningContainers(): Promise<ContainerInfo[]> {
+  async runDocker(args: string[]): Promise<ExecResult> {
+    return this.execCapture(this.dockerCommand, args);
+  }
+
+  /**
+   * List every container on the host — running AND stopped (`docker ps -a`).
+   * The Containers sidebar uses the per-row `.State` column to decide which
+   * lifecycle icons (`Start` / `Stop` / `Restart` / `Logs`) are enabled.
+   */
+  async listContainers(): Promise<ContainerInfo[]> {
     const result = await this.execCapture(this.dockerCommand, [
       'ps',
+      '-a',
       '--no-trunc',
       '--format',
-      '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}'
+      '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}'
     ]);
     if (result.code !== 0) {
       throw new Error(
@@ -159,6 +178,60 @@ export class DockerClient {
       );
     }
     return parseContainerList(result.stdout);
+  }
+
+  /**
+   * Query running state for every service in a compose project.
+   *
+   * Runs `docker compose ps -a` once per compose file and returns a
+   * `serviceName → state` map. Services absent from the map have no container
+   * (never started or fully removed) — the tree view treats them as stopped.
+   *
+   * Failures (compose CLI missing, project broken) degrade to an empty map so
+   * the sidebar still renders — items just show the `*Stopped` contextValue
+   * and only `Start` is enabled.
+   */
+  async composeServiceStates(
+    composeFilePath: string
+  ): Promise<Map<string, string>> {
+    let result;
+    try {
+      result = await this.runCompose(composeFilePath, [
+        'ps',
+        '-a',
+        '--format',
+        '{{.Service}}\t{{.State}}'
+      ]);
+    } catch (err) {
+      // composeInvocation itself can throw if neither v1 nor v2 is on PATH.
+      // Degrade silently — the view will mark every service as stopped.
+      this.composeStatesLastError =
+        err instanceof Error ? err.message : String(err);
+      return new Map();
+    }
+    this.composeStatesLastError = null;
+    const map = new Map<string, string>();
+    if (result.code !== 0) {
+      // Project has no containers yet, or ps returned nothing useful. Empty
+      // map = everything looks stopped, which is the right UX for a project
+      // that has never been `up`'d.
+      return map;
+    }
+    for (const line of result.stdout.split('\n')) {
+      const trimmed = line.replace(/\r$/, '').trim();
+      if (!trimmed) continue;
+      const [service, state] = trimmed.split('\t');
+      if (service && state) {
+        map.set(service.trim(), state.trim().toLowerCase());
+      }
+    }
+    return map;
+  }
+
+  /** Diagnostic surfaced via logs when `composeServiceStates` swallows an error. */
+  private composeStatesLastError: string | null = null;
+  get composeStatesError(): string | null {
+    return this.composeStatesLastError;
   }
 
   /**
@@ -215,9 +288,14 @@ export class DockerClient {
 }
 
 /**
- * Pure: parse the tab-separated `docker ps --format` output into
- * `ContainerInfo[]`. Fields with embedded tabs (extremely rare in image names)
- * get folded back together so we don't lose data.
+ * Pure: parse the tab-separated `docker ps -a --format` output into
+ * `ContainerInfo[]`. The format string is:
+ *
+ *   `{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.State}}`
+ *
+ * Fields with embedded tabs (extremely rare in image names) get folded back
+ * together so we don't lose data. The last two columns are reserved for
+ * `.Status` and `.State`; image = everything in between.
  *
  * The first tab-separated column is the daemon-supplied id (always lowercase
  * hex per Docker spec), so we require `isValidContainerId` strictly — a
@@ -232,18 +310,24 @@ export function parseContainerList(output: string): ContainerInfo[] {
     if (!trimmed) continue;
     const parts = trimmed.split('\t');
     if (parts.length < 2) continue;
-    const [id, name, ...rest] = parts;
+    const [id, name] = parts;
     const trimmedId = id.trim();
     if (!isValidContainerId(trimmedId)) continue;
     const trimmedName = name.trim();
     if (!isValidContainerName(trimmedName)) continue;
-    const image = rest.length > 0 ? rest.slice(0, -1).join('\t') : '';
-    const status = rest.length > 0 ? rest[rest.length - 1] : '';
+    const state = parts.length >= 5 ? parts[parts.length - 1].trim() : '';
+    const status =
+      parts.length >= 4 ? parts[parts.length - 2].trim() : '';
+    const image =
+      parts.length >= 5
+        ? parts.slice(2, -2).join('\t').trim()
+        : '';
     out.push({
       id: trimmedId,
       name: trimmedName,
-      image: image.trim(),
-      status: status.trim()
+      image,
+      status,
+      state: state.toLowerCase()
     });
   }
   return out;

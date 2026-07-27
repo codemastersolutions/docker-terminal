@@ -51,6 +51,67 @@
       {
         "command": "composeTerminal.attachContainer",
         "title": "Open Shell in Container",
+        "icon": "$(terminal)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.refreshCompose",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.composeShell",
+        "title": "Open Shell",
+        "icon": "$(terminal)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.composeStart",
+        "title": "Start Service",
+        "icon": "$(debug-start)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.composeStop",
+        "title": "Stop Service",
+        "icon": "$(debug-stop)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.composeRestart",
+        "title": "Restart Service",
+        "icon": "$(refresh)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.composeLogs",
+        "title": "Service Logs",
+        "icon": "$(output)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.containerStart",
+        "title": "Start Container",
+        "icon": "$(debug-start)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.containerStop",
+        "title": "Stop Container",
+        "icon": "$(debug-stop)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.containerRestart",
+        "title": "Restart Container",
+        "icon": "$(refresh)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.containerLogs",
+        "title": "Container Logs",
+        "icon": "$(output)",
         "category": "Docker Terminal"
       }
     ],
@@ -75,6 +136,11 @@
       "dockerTerminal-activityBar": [
         {
           "id": "dockerTerminal-servicesView",
+          "name": "Containers",
+          "icon": "assets/icon.svg"
+        },
+        {
+          "id": "dockerTerminal-composeView",
           "name": "Compose Services",
           "icon": "assets/icon.svg"
         }
@@ -86,6 +152,63 @@
           "command": "composeTerminal.refreshContainers",
           "when": "view == dockerTerminal-servicesView",
           "group": "navigation"
+        },
+        {
+          "command": "composeTerminal.refreshCompose",
+          "when": "view == dockerTerminal-composeView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "composeTerminal.composeStart",
+          "when": "view == dockerTerminal-composeView && viewItem == composeServiceStopped",
+          "group": "inline@1"
+        },
+        {
+          "command": "composeTerminal.composeStop",
+          "when": "view == dockerTerminal-composeView && viewItem == composeServiceRunning",
+          "group": "inline@2"
+        },
+        {
+          "command": "composeTerminal.composeRestart",
+          "when": "view == dockerTerminal-composeView && viewItem == composeServiceRunning",
+          "group": "inline@3"
+        },
+        {
+          "command": "composeTerminal.composeLogs",
+          "when": "view == dockerTerminal-composeView && viewItem == composeServiceRunning",
+          "group": "inline@4"
+        },
+        {
+          "command": "composeTerminal.composeShell",
+          "when": "view == dockerTerminal-composeView && (viewItem == composeServiceRunning || viewItem == composeServiceStopped)",
+          "group": "inline@5"
+        },
+        {
+          "command": "composeTerminal.containerStart",
+          "when": "view == dockerTerminal-servicesView && viewItem == stoppedContainer",
+          "group": "inline@1"
+        },
+        {
+          "command": "composeTerminal.containerStop",
+          "when": "view == dockerTerminal-servicesView && viewItem == runningContainer",
+          "group": "inline@2"
+        },
+        {
+          "command": "composeTerminal.containerRestart",
+          "when": "view == dockerTerminal-servicesView && viewItem == runningContainer",
+          "group": "inline@3"
+        },
+        {
+          "command": "composeTerminal.containerLogs",
+          "when": "view == dockerTerminal-servicesView && viewItem == runningContainer",
+          "group": "inline@4"
+        },
+        {
+          "command": "composeTerminal.attachContainer",
+          "when": "view == dockerTerminal-servicesView && viewItem == runningContainer",
+          "group": "inline@5"
         }
       ]
     },
@@ -130,7 +253,7 @@
     "watch": "node esbuild.config.js --watch",
     "typecheck": "tsc --noEmit",
     "package": "npm run build && vsce package",
-    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts && tsx test/container.smoke.ts",
+    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts && tsx test/container.smoke.ts && tsx test/composeTree.smoke.ts",
     "test:integration": "tsx test/compose-cli.smoke.ts",
     "test:e2e": "tsx test/e2e.smoke.ts",
     "test": "npm run test:unit && npm run test:integration && npm run test:e2e",

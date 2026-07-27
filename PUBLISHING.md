@@ -112,6 +112,32 @@ The official marketplace at <https://marketplace.visualstudio.com/> is the prima
    # it will prompt for the PAT and cache it in ~/.vsce
    ```
 
+### 1.1 Publisher display name (optional)
+
+The publisher `id` (`codemastersolutions`) is **immutable** once created — the extension ID `codemastersolutions.docker-terminal` depends on it, so it must never change.
+
+The **display name** shown under the extension title in the Extensions panel is a separate field managed in the Marketplace publisher profile, **not** in `package.json`. That's how Microsoft publishes `ms-azuretools.vscode-docker` under the display name **Microsoft** while keeping a short slug as ID.
+
+To set the display name to **`CodeMaster Soluções`**:
+
+1. Open <https://marketplace.visualstudio.com/manage/publishers/codemastersolutions>
+2. **Edit profile** → set **Display Name** to `CodeMaster Soluções`
+3. Save
+
+The change propagates within minutes. The extension listing will then read:
+
+> **Docker Terminal**
+> Open a terminal into a docker-compose...
+> **CodeMaster Soluções**
+
+…while the install command and ID remain unchanged:
+
+```bash
+code --install-extension codemastersolutions.docker-terminal
+```
+
+> ⚠️ Display name only applies once the publisher has been created in the Marketplace. On the very first publish, the Marketplace shows the ID (`codemastersolutions`) as the name until you edit the profile.
+
 ### 2. Publish
 
 ```bash
@@ -150,6 +176,8 @@ Publishing to Open VSX maximizes reach across those editors.
    ```bash
    npm i -g ovsx
    ```
+
+> 💡 Open VSX namespaces also have a **display name** editable at <https://open-vsx.org/user-settings/namespaces>. Set it to `CodeMaster Soluções` to keep the listing consistent across VS Code Marketplace, Open VSX, and TRAE.
 
 ### 2. Publish
 

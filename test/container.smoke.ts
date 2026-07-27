@@ -87,9 +87,9 @@ for (const name of invalidNames) {
 
 // ---- parseContainerList ----
 const sampleOutput = [
-  // Two well-formed lines
-  'a1b2c3d4e5f6\tweb\tnginx:1.27\tUp 5 minutes',
-  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\tdb\tpostgres:16\tUp 2 hours'
+  // Two well-formed lines (id, name, image, status, state)
+  'a1b2c3d4e5f6\tweb\tnginx:1.27\tUp 5 minutes\trunning',
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\tdb\tpostgres:16\tUp 2 hours\texited'
 ].join('\n');
 let parsed = parseContainerList(sampleOutput);
 assert.strictEqual(parsed.length, 2, 'two valid lines parsed');
@@ -97,13 +97,16 @@ assert.strictEqual(parsed[0].id, 'a1b2c3d4e5f6');
 assert.strictEqual(parsed[0].name, 'web');
 assert.strictEqual(parsed[0].image, 'nginx:1.27');
 assert.strictEqual(parsed[0].status, 'Up 5 minutes');
+assert.strictEqual(parsed[0].state, 'running', 'state column parsed for running');
 assert.strictEqual(parsed[1].id, '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef');
 assert.strictEqual(parsed[1].name, 'db');
+assert.strictEqual(parsed[1].state, 'exited', 'state column parsed for exited');
 
 // Whitespace tolerance and CR/LF endings
-parsed = parseContainerList('  a1b2c3d4e5f6\tweb\tnginx:1.27\tUp 5 minutes  \r\n');
+parsed = parseContainerList('  a1b2c3d4e5f6\tweb\tnginx:1.27\tUp 5 minutes\trunning  \r\n');
 assert.strictEqual(parsed.length, 1, 'whitespace + CRLF tolerated');
 assert.strictEqual(parsed[0].name, 'web');
+assert.strictEqual(parsed[0].state, 'running');
 
 // Empty input and only-blank lines
 assert.strictEqual(parseContainerList('').length, 0, 'empty → none');
@@ -112,15 +115,21 @@ assert.strictEqual(parseContainerList('\n\n  \n').length, 0, 'blank lines only �
 // Malformed: only one tab-separated field → skipped
 assert.strictEqual(parseContainerList('not-a-ps-line').length, 0, 'bare word ignored');
 // Malformed: invalid id (uppercase) → skipped
-assert.strictEqual(parseContainerList('DEADBEEF\tweb\tnginx\tUp').length, 0, 'bad hex id rejected');
+assert.strictEqual(parseContainerList('DEADBEEF\tweb\tnginx\tUp\trunning').length, 0, 'bad hex id rejected');
 // Malformed: invalid name (starts with dash) → skipped
-assert.strictEqual(parseContainerList('a1b2c3\t-bad\tnginx\tUp').length, 0, 'bad name rejected');
+assert.strictEqual(parseContainerList('a1b2c3\t-bad\tnginx\tUp\trunning').length, 0, 'bad name rejected');
 
 // Image names with embedded whitespace are not produced by Docker, but if
 // something exotic sneaks in we should preserve it rather than crash.
-const exotic = parseContainerList('a1b2c3d4\tapp\tmy image:latest\tUp 1m');
+const exotic = parseContainerList('a1b2c3d4\tapp\tmy image:latest\tUp 1m\trunning');
 assert.strictEqual(exotic.length, 1);
 assert.strictEqual(exotic[0].image, 'my image:latest');
+assert.strictEqual(exotic[0].state, 'running');
+
+// State defaulting when only 4 columns provided (back-compat)
+const legacy = parseContainerList('a1b2c3d4\tapp\tmyimage\tUp 1m');
+assert.strictEqual(legacy.length, 1);
+assert.strictEqual(legacy[0].state, '', 'state empty when 4-column format used');
 
 // eslint-disable-next-line no-console
 console.log(

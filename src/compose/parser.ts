@@ -93,7 +93,8 @@ export async function parseComposeFile(filePath: string): Promise<ComposeProject
         name,
         image: typeof defObj.image === 'string' ? defObj.image : undefined,
         workingDir:
-          typeof defObj.working_dir === 'string' ? defObj.working_dir : undefined
+          typeof defObj.working_dir === 'string' ? defObj.working_dir : undefined,
+        state: ''
       };
     });
 
