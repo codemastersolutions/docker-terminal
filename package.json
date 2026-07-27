@@ -113,7 +113,7 @@
     "esbuild": "^0.28.1",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
-    "vsce": "^1.25.1"
+    "vsce": "^2.15.0"
   },
   "overrides": {
     "markdown-it": "^14.1.2",
