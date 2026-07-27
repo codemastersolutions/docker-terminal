@@ -7,7 +7,8 @@ Una extensión que abre un terminal en un servicio de `docker-compose` usando el
 ## Características
 
 - Lista los servicios de cualquier `docker-compose.{yml,yaml}` o `compose.{yml,yaml}` en el workspace
-- Abre un terminal real conectado vía `docker compose exec`
+- **Panel "Containers" en la barra lateral: lista todos los contenedores en ejecución en el host (`docker ps`), incluso sin docker-compose en el workspace — haz clic para abrir un shell**
+- Abre un terminal real conectado vía `docker compose exec` (ruta compose) o `docker exec` (ruta lateral)
 - Inicia el contenedor automáticamente si está detenido
 - Detecta el shell de inicio de sesión predeterminado del contenedor por servicio (`/bin/bash`, `/bin/zsh`, `/bin/ash`, etc.)
 - Compatible con Docker Compose v2 (`docker compose`) y hace fallback a v1 (`docker-compose`)
@@ -21,6 +22,15 @@ Una extensión que abre un terminal en un servicio de `docker-compose` usando el
 
 ## Uso
 
+### Barra lateral (cualquier workspace, incluso sin docker-compose)
+
+1. Haz clic en el icono **Containers** en la barra lateral
+2. El panel "Contenedores en Ejecución" lista todos los contenedores corriendo en el host
+3. Haz clic en un contenedor — se abre un terminal con `docker exec -it <id> <shell>`
+4. Usa el botón **$(refresh)** en el título de la vista para reescanear
+
+### Compose (workspace con docker-compose.yml)
+
 1. Abre un workspace que contenga un `docker-compose.yml`
 2. Ejecuta **Docker Terminal: Open Shell in Service** desde la Paleta de Comandos
 3. Elige un archivo compose (se omite si solo hay uno)
@@ -29,11 +39,10 @@ Una extensión que abre un terminal en un servicio de `docker-compose` usando el
 
 ## Cómo funciona
 
-1. La extensión escanea las raíces del workspace en busca de archivos `docker-compose.{yml,yaml}` y `compose.{yml,yaml}` (o usa la lista explícita definida en `composeTerminal.composeFiles`).
-2. Parsea cada archivo compose con `js-yaml` y lista las entradas de `services`.
-3. Cuando eliges un servicio, la extensión ejecuta `docker compose up -d <service>` (o `docker-compose`, en v1) si el contenedor está detenido.
-4. Ejecuta `docker exec <container> getent passwd <user | 0>` para leer el shell de inicio de sesión predeterminado del contenedor desde `/etc/passwd`.
-5. Se abre un terminal de VS Code y se ejecuta `docker compose exec -it <service> <shell>` dentro de él.
+1. Al activarse, la extensión carga una entrada "Containers" en la barra lateral.
+2. La vista lateral ejecuta `docker ps --no-trunc --format '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}'` y lista todos los contenedores en ejecución. La actualización tiene debounce y se ejecuta automáticamente cuando el panel se vuelve visible.
+3. Al hacer clic en un contenedor se ejecuta `docker exec <container> getent passwd <user | 0>` para leer el shell de inicio de sesión predeterminado del contenedor desde `/etc/passwd`, y luego abre un terminal con `docker exec -it <id> <shell>`.
+4. El comando vía compose **Docker Terminal: Open Shell in Service** sigue el mismo paso de detección de shell. Escanea el workspace por `docker-compose.{yml,yaml}` / `compose.{yml,yaml}`, hace parse con `js-yaml` y ejecuta `docker compose up -d <service>` (o fallback v1) para asegurar que el contenedor está corriendo.
 
 Esto significa que los contenedores basados en Alpine obtienen `ash`, Debian/Ubuntu obtienen `bash`, y las imágenes personalizadas con `zsh`/`fish` configurados como shell predeterminado funcionan sin ajustes — sin un shell fijo en el código.
 
@@ -49,9 +58,11 @@ Esto significa que los contenedores basados en Alpine obtienen `ash`, Debian/Ubu
 
 ## Comandos
 
-| Comando             | Título                                 |
-| ------------------- | -------------------------------------- |
-| `compose.openShell` | Docker Terminal: Open Shell in Service |
+| Comando                                | Título                                 |
+| -------------------------------------- | -------------------------------------- |
+| `compose.openShell`                    | Docker Terminal: Open Shell in Service |
+| `composeTerminal.refreshContainers`    | Docker Terminal: Refresh               |
+| `composeTerminal.attachContainer`      | Docker Terminal: Open Shell in Container |
 
 ## Build
 
@@ -72,16 +83,22 @@ npm run typecheck  # tsc --noEmit
 
 ```
 src/
-├── extension.ts          # punto de entrada, registro de comandos
+├── extension.ts          # punto de entrada, registro de comandos, vista lateral
 ├── compose/
 │   ├── parser.ts         # parsing YAML, descubrimiento en el workspace
-│   └── types.ts          # ComposeFileRef, ComposeProject, ComposeService
+│   ├── types.ts          # ComposeFileRef, ComposeProject, ComposeService
+│   └── validation.ts     # regexes de whitelist para service/shell/container
+├── containers/
+│   ├── types.ts          # ContainerInfo, ContainerTreeItem
+│   └── provider.ts       # TreeDataProvider de la vista lateral
 ├── docker/
-│   ├── client.ts         # wrapper de DockerClient (fallback v2 → v1)
+│   ├── client.ts         # wrapper del DockerClient (fallback v2 → v1, ps/listing, exec)
 │   └── shell.ts          # detección del shell predeterminado vía /etc/passwd
+├── host/
+│   └── clearCommand.ts   # selección de `clear`/`cls` por SO
 └── terminals/
-    └── manager.ts        # ciclo de vida de los terminales de VS Code
-test/                     # smoke tests (requieren un daemon docker activo)
+    └── manager.ts        # ciclo de vida de los terminales de VS Code (compose y container)
+test/                     # smoke tests (algunos requieren un daemon docker activo)
 ```
 
 ## Licencia

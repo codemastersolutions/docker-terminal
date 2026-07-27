@@ -17,6 +17,12 @@
 
 const SERVICE_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 const SHELL_PATH_RE = /^\/[a-zA-Z0-9/._+-]+$/;
+// Container identifiers come from `docker ps` output — daemon-controlled, but
+// we still whitelist defensively so a hostile daemon response (or a future code
+// path that takes user-supplied input) can't smuggle metacharacters into a
+// `docker exec` invocation.
+const CONTAINER_ID_RE = /^[a-f0-9]{1,64}$/;
+const CONTAINER_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$/;
 
 export function isValidServiceName(name: unknown): name is string {
   return typeof name === 'string' && SERVICE_NAME_RE.test(name);
@@ -30,4 +36,12 @@ export function isValidShellPath(path: unknown): path is string {
   // from a known shell binary.
   if (path.split('/').includes('..')) return false;
   return true;
+}
+
+export function isValidContainerId(id: unknown): id is string {
+  return typeof id === 'string' && CONTAINER_ID_RE.test(id);
+}
+
+export function isValidContainerName(name: unknown): name is string {
+  return typeof name === 'string' && CONTAINER_NAME_RE.test(name);
 }

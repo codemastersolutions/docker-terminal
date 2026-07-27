@@ -1,6 +1,14 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 import { sanitizeProjectName } from '../compose/parser';
+import { isValidContainerId, isValidContainerName } from '../compose/validation';
+
+export interface ContainerInfo {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+}
 
 const MAX_ERROR_CHARS = 500;
 
@@ -126,7 +134,31 @@ export class DockerClient {
     containerId: string,
     args: string[]
   ): Promise<ExecResult> {
+    if (!isValidContainerId(containerId) && !isValidContainerName(containerId)) {
+      throw new Error(
+        `execInContainer: refusing non-conforming container ref "${trimError(containerId)}"`
+      );
+    }
     return this.execCapture(this.dockerCommand, ['exec', containerId, ...args]);
+  }
+
+  /**
+   * List every running container on the host (`docker ps --no-trunc`), regardless
+   * of whether it was started by docker compose. Used by the sidebar tree view.
+   */
+  async listRunningContainers(): Promise<ContainerInfo[]> {
+    const result = await this.execCapture(this.dockerCommand, [
+      'ps',
+      '--no-trunc',
+      '--format',
+      '{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}'
+    ]);
+    if (result.code !== 0) {
+      throw new Error(
+        `docker ps failed: ${trimError(result.stderr) || trimError(result.stdout) || `exit ${result.code}`}`
+      );
+    }
+    return parseContainerList(result.stdout);
   }
 
   /**
@@ -180,4 +212,39 @@ export class DockerClient {
     }
     return null;
   }
+}
+
+/**
+ * Pure: parse the tab-separated `docker ps --format` output into
+ * `ContainerInfo[]`. Fields with embedded tabs (extremely rare in image names)
+ * get folded back together so we don't lose data.
+ *
+ * The first tab-separated column is the daemon-supplied id (always lowercase
+ * hex per Docker spec), so we require `isValidContainerId` strictly — a
+ * name-shaped first column would mean the parser is reading garbage, not a
+ * container list.
+ */
+export function parseContainerList(output: string): ContainerInfo[] {
+  const out: ContainerInfo[] = [];
+  for (const rawLine of output.split('\n')) {
+    const line = rawLine.replace(/\r$/, '');
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split('\t');
+    if (parts.length < 2) continue;
+    const [id, name, ...rest] = parts;
+    const trimmedId = id.trim();
+    if (!isValidContainerId(trimmedId)) continue;
+    const trimmedName = name.trim();
+    if (!isValidContainerName(trimmedName)) continue;
+    const image = rest.length > 0 ? rest.slice(0, -1).join('\t') : '';
+    const status = rest.length > 0 ? rest[rest.length - 1] : '';
+    out.push({
+      id: trimmedId,
+      name: trimmedName,
+      image: image.trim(),
+      status: status.trim()
+    });
+  }
+  return out;
 }

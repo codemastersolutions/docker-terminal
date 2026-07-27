@@ -25,6 +25,7 @@
     "workspace"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "workspaceContains:**/docker-compose.{yml,yaml}",
     "workspaceContains:**/compose.{yml,yaml}",
     "workspaceContains:**/docker-compose.yml",
@@ -40,6 +41,17 @@
         "command": "compose.openShell",
         "title": "Open Shell in Service",
         "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.refreshContainers",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.attachContainer",
+        "title": "Open Shell in Container",
+        "category": "Docker Terminal"
       }
     ],
     "keybindings": [
@@ -50,6 +62,33 @@
         "when": "workspaceFolderCount > 0"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dockerTerminal-activityBar",
+          "title": "Docker Terminal",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "dockerTerminal-activityBar": [
+        {
+          "id": "dockerTerminal-servicesView",
+          "name": "Compose Services",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "composeTerminal.refreshContainers",
+          "when": "view == dockerTerminal-servicesView",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Docker Terminal",
       "properties": {
@@ -91,7 +130,7 @@
     "watch": "node esbuild.config.js --watch",
     "typecheck": "tsc --noEmit",
     "package": "npm run build && vsce package",
-    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts",
+    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts && tsx test/container.smoke.ts",
     "test:integration": "tsx test/compose-cli.smoke.ts",
     "test:e2e": "tsx test/e2e.smoke.ts",
     "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
@@ -113,7 +152,7 @@
     "esbuild": "^0.28.1",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
-    "vsce": "^1.25.1"
+    "vsce": "^2.15.0"
   },
   "overrides": {
     "markdown-it": "^14.1.2",
