@@ -103,13 +103,13 @@
     "commit:push": "npm run commitzero -- commit --add --push"
   },
   "dependencies": {
-    "js-yaml": "^5.2.1"
+    "js-yaml": "^5.2.2"
   },
   "devDependencies": {
     "@codemastersolutions/commitzero": "^0.0.53",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.1.1",
-    "@types/vscode": "1.85.0",
+    "@types/vscode": "1.125.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2",
