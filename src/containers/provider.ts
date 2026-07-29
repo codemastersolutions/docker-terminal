@@ -72,7 +72,7 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
     );
     tip.isTrusted = { enabledCommands: ['composeTerminal.attachContainer'] };
     ti.tooltip = tip;
-    ti.iconPath = new ThemeIcon(running ? 'container' : 'debug-stop');
+    ti.iconPath = new ThemeIcon(running ? 'container' : 'circle-slash');
     // Two context values drive per-row menu visibility:
     //   runningContainer  → Stop / Restart / Logs visible, Start hidden
     //   stoppedContainer  → Start visible, the rest hidden

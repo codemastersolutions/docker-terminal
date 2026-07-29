@@ -34,7 +34,7 @@
     "workspaceContains:**/compose.yaml"
   ],
   "main": "./dist/extension.js",
-  "icon": "assets/icon.png",
+  "icon": "assets/icon.webp",
   "contributes": {
     "commands": [
       {
@@ -69,13 +69,13 @@
       {
         "command": "composeTerminal.composeStart",
         "title": "Start Service",
-        "icon": "$(debug-start)",
+        "icon": "$(play)",
         "category": "Docker Terminal"
       },
       {
         "command": "composeTerminal.composeStop",
         "title": "Stop Service",
-        "icon": "$(debug-stop)",
+        "icon": "$(stop)",
         "category": "Docker Terminal"
       },
       {
@@ -93,13 +93,13 @@
       {
         "command": "composeTerminal.containerStart",
         "title": "Start Container",
-        "icon": "$(debug-start)",
+        "icon": "$(play)",
         "category": "Docker Terminal"
       },
       {
         "command": "composeTerminal.containerStop",
         "title": "Stop Container",
-        "icon": "$(debug-stop)",
+        "icon": "$(stop)",
         "category": "Docker Terminal"
       },
       {
@@ -112,6 +112,12 @@
         "command": "composeTerminal.containerLogs",
         "title": "Container Logs",
         "icon": "$(output)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.openRepo",
+        "title": "Open Repository",
+        "icon": "$(link-external)",
         "category": "Docker Terminal"
       }
     ],
@@ -252,7 +258,7 @@
     "build": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
     "typecheck": "tsc --noEmit",
-    "package": "npm run build && vsce package",
+    "package": "npm run build && vsce package --allow-missing-repository --no-git-tag-version",
     "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts && tsx test/container.smoke.ts && tsx test/composeTree.smoke.ts",
     "test:integration": "tsx test/compose-cli.smoke.ts",
     "test:e2e": "tsx test/e2e.smoke.ts",
@@ -272,15 +278,18 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.1.1",
     "@types/vscode": "1.85.0",
+    "@vscode/vsce": "^3.9.2",
     "esbuild": "^0.28.1",
     "tsx": "^4.23.1",
-    "typescript": "^7.0.2",
-    "vsce": "^2.15.0"
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "markdown-it": "^14.1.2",
     "xml2js": "^0.5.0",
-    "linkify-it": "^5.0.2"
+    "linkify-it": "^5.0.2",
+    "brace-expansion": "^5.0.8",
+    "minimatch": "^10.2.6",
+    "glob": "^13.0.6"
   },
   "allowScripts": {
     "@codemastersolutions/commitzero@0.0.53": true

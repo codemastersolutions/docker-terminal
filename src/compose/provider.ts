@@ -132,7 +132,7 @@ export class ComposeTreeProvider implements TreeDataProvider<ComposeTreeItem> {
       );
       tip.isTrusted = { enabledCommands: ['composeTerminal.composeShell'] };
       ti.tooltip = tip;
-      ti.iconPath = new ThemeIcon(running ? 'server' : 'debug-stop');
+      ti.iconPath = new ThemeIcon(running ? 'server' : 'circle-slash');
       // Two context values drive per-row menu visibility:
       //   composeServiceRunning  → Stop / Restart / Logs visible, Start hidden
       //   composeServiceStopped  → Start visible, the rest hidden

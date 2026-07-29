@@ -12,6 +12,7 @@ const config = {
   platform: 'node',
   target: 'node18',
   sourcemap: true,
+  minify: true,
   logLevel: 'info'
 };
 

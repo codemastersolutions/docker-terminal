@@ -1,9 +1,11 @@
 import {
   commands,
+  env,
   ExtensionContext,
   OutputChannel,
   ProgressLocation,
   QuickPickItem,
+  Uri,
   window,
   workspace
 } from 'vscode';
@@ -15,6 +17,7 @@ import { isValidContainerId, isValidContainerName } from './compose/validation';
 import { ContainerTreeProvider } from './containers/provider';
 import { ContainerInfo, DockerClient } from './docker/client';
 import { detectDefaultShell } from './docker/shell';
+import { InfoStatusBar } from './info/statusBar';
 import { TerminalManager } from './terminals/manager';
 
 export async function activate(context: ExtensionContext): Promise<void> {
@@ -302,7 +305,48 @@ export async function activate(context: ExtensionContext): Promise<void> {
     terminalManager,
     log
   );
+
+  installInfoStatusBar(context);
 }
+
+/**
+ * Persistent info block at the bottom of the VS Code window showing the
+ * extension's name, installed version, and a clickable publisher link to
+ * the GitHub repository. Reads metadata straight from package.json so the
+ * block always reflects the running extension without any hardcoded copy.
+ */
+function installInfoStatusBar(context: ExtensionContext): void {
+  const pkg = context.extension.packageJSON as {
+    name?: string;
+    displayName?: string;
+    version?: string;
+    publisher?: string;
+    repository?: { url?: string } | string;
+  };
+  const repoUrl = normaliseRepoUrl(pkg.repository);
+  if (!repoUrl) return;
+  const openRepo = commands.registerCommand('composeTerminal.openRepo', async () => {
+    await env.openExternal(Uri.parse(repoUrl));
+  });
+  const infoBar = new InfoStatusBar({
+    name: pkg.displayName ?? pkg.name ?? 'Docker Terminal',
+    version: pkg.version ?? '0.0.0',
+    publisher: PUBLISHER_DISPLAY,
+    repoUrl,
+    openRepoCommand: 'composeTerminal.openRepo'
+  });
+  context.subscriptions.push(openRepo, infoBar);
+}
+
+function normaliseRepoUrl(repo: unknown): string | undefined {
+  if (typeof repo === 'string') return repo.replace(/^git\+/, '').replace(/\.git$/, '');
+  if (repo && typeof repo === 'object' && 'url' in repo && typeof repo.url === 'string') {
+    return repo.url.replace(/^git\+/, '').replace(/\.git$/, '');
+  }
+  return undefined;
+}
+
+const PUBLISHER_DISPLAY = 'CodeMaster Soluções';
 
 export function deactivate(): void {
   // disposables are released via context.subscriptions
