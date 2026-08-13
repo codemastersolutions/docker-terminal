@@ -7,36 +7,42 @@ import {
   QuickPickItem,
   Uri,
   window,
-  workspace
-} from 'vscode';
-import * as path from 'path';
-import { findComposeFiles, parseComposeFile } from './compose/parser';
-import { ComposeServiceRef, ComposeTreeProvider } from './compose/provider';
-import type { ComposeFileRef, ComposeProject, ComposeService } from './compose/types';
-import { isValidContainerId, isValidContainerName } from './compose/validation';
-import { ContainerTreeProvider } from './containers/provider';
-import { ContainerInfo, DockerClient } from './docker/client';
-import { detectDefaultShell } from './docker/shell';
-import { InfoStatusBar } from './info/statusBar';
-import { TerminalManager } from './terminals/manager';
+  workspace,
+} from "vscode";
+import * as path from "path";
+import { findComposeFiles, parseComposeFile } from "./compose/parser";
+import { ComposeServiceRef, ComposeTreeProvider } from "./compose/provider";
+import type {
+  ComposeFileRef,
+  ComposeProject,
+  ComposeService,
+} from "./compose/types";
+import { isValidContainerId, isValidContainerName } from "./compose/validation";
+import { ContainerTreeProvider } from "./containers/provider";
+import { discoverScripts, ScriptEntry } from "./containers/scripts";
+import { ContainerScriptTreeItem } from "./containers/types";
+import { ContainerInfo, DockerClient } from "./docker/client";
+import { detectDefaultShell } from "./docker/shell";
+import { InfoStatusBar } from "./info/statusBar";
+import { TerminalManager } from "./terminals/manager";
 
 export async function activate(context: ExtensionContext): Promise<void> {
-  const config = workspace.getConfiguration('composeTerminal');
+  const config = workspace.getConfiguration("composeTerminal");
   const docker = new DockerClient({
-    dockerCommand: config.get<string>('dockerCommand') ?? 'docker',
-    preferComposeV2: config.get<boolean>('preferComposeV2') ?? true
+    dockerCommand: config.get<string>("dockerCommand") ?? "docker",
+    preferComposeV2: config.get<boolean>("preferComposeV2") ?? true,
   });
   // Dedicated output channel — toast notifications disappear too quickly to
   // diagnose a regression. The channel name is the literal string
   // `Docker Terminal` so the user finds it in the Output panel dropdown.
-  const log: OutputChannel = window.createOutputChannel('Docker Terminal');
+  const log: OutputChannel = window.createOutputChannel("Docker Terminal");
   context.subscriptions.push(log);
   const terminalManager = new TerminalManager(log);
   const containerProvider = new ContainerTreeProvider(docker, log);
 
-  const containersView = window.createTreeView('dockerTerminal-servicesView', {
+  const containersView = window.createTreeView("dockerTerminal-servicesView", {
     treeDataProvider: containerProvider,
-    showCollapseAll: false
+    showCollapseAll: false,
   });
   containerProvider.attachView(containersView);
   context.subscriptions.push(
@@ -44,14 +50,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
     containerProvider,
     containersView.onDidChangeVisibility((e) => {
       if (e.visible) containerProvider.refresh();
-    })
+    }),
   );
 
   const composeTreeProvider = new ComposeTreeProvider(docker, log);
   composeTreeProvider.startWatching();
-  const composeView = window.createTreeView('dockerTerminal-composeView', {
+  const composeView = window.createTreeView("dockerTerminal-composeView", {
     treeDataProvider: composeTreeProvider,
-    showCollapseAll: true
+    showCollapseAll: true,
   });
   composeTreeProvider.attachView(composeView);
   context.subscriptions.push(
@@ -59,19 +65,23 @@ export async function activate(context: ExtensionContext): Promise<void> {
     composeTreeProvider,
     composeView.onDidChangeVisibility((e) => {
       if (e.visible) composeTreeProvider.refresh();
-    })
+    }),
   );
 
-  const openShell = commands.registerCommand('compose.openShell', async () => {
+  const openShell = commands.registerCommand("compose.openShell", async () => {
     try {
-      const explicit = workspace
-        .getConfiguration('composeTerminal')
-        .get<string[]>('composeFiles') ?? [];
+      const explicit =
+        workspace
+          .getConfiguration("composeTerminal")
+          .get<string[]>("composeFiles") ?? [];
 
-      const files = await findComposeFiles(workspace.workspaceFolders, explicit);
+      const files = await findComposeFiles(
+        workspace.workspaceFolders,
+        explicit,
+      );
       if (files.length === 0) {
         void window.showErrorMessage(
-          'Docker Terminal: no docker-compose.{yml,yaml} or compose.{yml,yaml} found in workspace.'
+          "Docker Terminal: no docker-compose.{yml,yaml} or compose.{yml,yaml} found in workspace.",
         );
         return;
       }
@@ -82,7 +92,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       const project = await parseComposeFile(fileRef.path);
       if (project.services.length === 0) {
         void window.showErrorMessage(
-          `Docker Terminal: no services defined in ${fileRef.label}.`
+          `Docker Terminal: no services defined in ${fileRef.label}.`,
         );
         return;
       }
@@ -95,61 +105,73 @@ export async function activate(context: ExtensionContext): Promise<void> {
         terminalManager,
         project,
         service,
-        fileRef
+        fileRef,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      const truncated = message.length > 500 ? `${message.slice(0, 500)}…` : message;
+      const truncated =
+        message.length > 500 ? `${message.slice(0, 500)}…` : message;
       log.appendLine(`[error] compose.openShell failed: ${truncated}`);
-      log.appendLine(err instanceof Error && err.stack ? err.stack : '(no stack)');
+      log.appendLine(
+        err instanceof Error && err.stack ? err.stack : "(no stack)",
+      );
       void window.showErrorMessage(`Docker Terminal: ${truncated}`);
     }
   });
 
   const refreshContainers = commands.registerCommand(
-    'composeTerminal.refreshContainers',
+    "composeTerminal.refreshContainers",
     () => {
       containerProvider.refresh();
-    }
+    },
   );
 
   const attachContainer = commands.registerCommand(
-    'composeTerminal.attachContainer',
+    "composeTerminal.attachContainer",
     async (arg: unknown) => {
       const info = normalizeContainerArg(arg);
       if (!info) {
-        log.appendLine('[warn] attachContainer invoked without a valid container ref');
+        log.appendLine(
+          "[warn] attachContainer invoked without a valid container ref",
+        );
         void window.showErrorMessage(
-          'Docker Terminal: attachContainer invoked without a valid container ref.'
+          "Docker Terminal: attachContainer invoked without a valid container ref.",
         );
         return;
       }
-      log.appendLine(`[info] attachContainer: id=${info.id} name=${info.name} image=${info.image}`);
+      log.appendLine(
+        `[info] attachContainer: id=${info.id} name=${info.name} image=${info.image}`,
+      );
       try {
         await attachToRunningContainer(docker, terminalManager, info, log);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        const truncated = message.length > 500 ? `${message.slice(0, 500)}…` : message;
+        const truncated =
+          message.length > 500 ? `${message.slice(0, 500)}…` : message;
         log.appendLine(`[error] attachContainer failed: ${truncated}`);
-        log.appendLine(err instanceof Error && err.stack ? err.stack : '(no stack)');
+        log.appendLine(
+          err instanceof Error && err.stack ? err.stack : "(no stack)",
+        );
         void window.showErrorMessage(`Docker Terminal: ${truncated}`);
       }
-    }
+    },
   );
 
   const refreshCompose = commands.registerCommand(
-    'composeTerminal.refreshCompose',
-    () => composeTreeProvider.refresh()
+    "composeTerminal.refreshCompose",
+    () => composeTreeProvider.refresh(),
   );
 
   const composeShell = commands.registerCommand(
-    'composeTerminal.composeShell',
+    "composeTerminal.composeShell",
     async (arg: unknown) => {
       const ref = normalizeServiceRef(arg);
       if (!ref) {
-        log.appendLine('[warn] composeShell invoked without a valid service ref');
+        log.appendLine(
+          "[warn] composeShell invoked without a valid service ref",
+        );
         void window.showErrorMessage(
-          'Docker Terminal: composeShell invoked without a valid service ref.'
+          "Docker Terminal: composeShell invoked without a valid service ref.",
         );
         return;
       }
@@ -157,19 +179,22 @@ export async function activate(context: ExtensionContext): Promise<void> {
         await runShellAction(docker, terminalManager, ref);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        const truncated = message.length > 500 ? `${message.slice(0, 500)}…` : message;
+        const truncated =
+          message.length > 500 ? `${message.slice(0, 500)}…` : message;
         log.appendLine(`[error] composeShell failed: ${truncated}`);
-        log.appendLine(err instanceof Error && err.stack ? err.stack : '(no stack)');
+        log.appendLine(
+          err instanceof Error && err.stack ? err.stack : "(no stack)",
+        );
         void window.showErrorMessage(`Docker Terminal: ${truncated}`);
       }
-    }
+    },
   );
 
   const composeStart = commands.registerCommand(
-    'composeTerminal.composeStart',
+    "composeTerminal.composeStart",
     async (arg: unknown) => {
       const ref = normalizeServiceRef(arg);
-      if (!ref) return invalidRefWarn(log, 'composeStart');
+      if (!ref) return invalidRefWarn(log, "composeStart");
       // `docker compose up -d <service>` honours `depends_on` automatically:
       // it starts the service and any dependency that is missing or stopped,
       // in declaration order, before attaching the requested service. So this
@@ -179,52 +204,52 @@ export async function activate(context: ExtensionContext): Promise<void> {
         docker,
         log,
         ref,
-        ['up', '-d', ref.serviceName],
+        ["up", "-d", ref.serviceName],
         `Starting ${ref.serviceName} (and dependencies)…`,
-        [containerProvider, composeTreeProvider]
-      ).catch((err) => lifecycleError(log, 'composeStart', err));
-    }
+        [containerProvider, composeTreeProvider],
+      ).catch((err) => lifecycleError(log, "composeStart", err));
+    },
   );
 
   const composeStop = commands.registerCommand(
-    'composeTerminal.composeStop',
+    "composeTerminal.composeStop",
     async (arg: unknown) => {
       const ref = normalizeServiceRef(arg);
-      if (!ref) return invalidRefWarn(log, 'composeStop');
+      if (!ref) return invalidRefWarn(log, "composeStop");
       await runComposeLifecycle(
         docker,
         log,
         ref,
-        ['stop', ref.serviceName],
+        ["stop", ref.serviceName],
         `Stopping ${ref.serviceName}…`,
-        [containerProvider, composeTreeProvider]
-      ).catch((err) => lifecycleError(log, 'composeStop', err));
-    }
+        [containerProvider, composeTreeProvider],
+      ).catch((err) => lifecycleError(log, "composeStop", err));
+    },
   );
 
   const composeRestart = commands.registerCommand(
-    'composeTerminal.composeRestart',
+    "composeTerminal.composeRestart",
     async (arg: unknown) => {
       const ref = normalizeServiceRef(arg);
-      if (!ref) return invalidRefWarn(log, 'composeRestart');
+      if (!ref) return invalidRefWarn(log, "composeRestart");
       await runComposeLifecycle(
         docker,
         log,
         ref,
-        ['restart', ref.serviceName],
+        ["restart", ref.serviceName],
         `Restarting ${ref.serviceName}…`,
-        [containerProvider, composeTreeProvider]
-      ).catch((err) => lifecycleError(log, 'composeRestart', err));
-    }
+        [containerProvider, composeTreeProvider],
+      ).catch((err) => lifecycleError(log, "composeRestart", err));
+    },
   );
 
   const composeLogs = commands.registerCommand(
-    'composeTerminal.composeLogs',
+    "composeTerminal.composeLogs",
     async (arg: unknown) => {
       const ref = normalizeServiceRef(arg);
-      if (!ref) return invalidRefWarn(log, 'composeLogs');
+      if (!ref) return invalidRefWarn(log, "composeLogs");
       openComposeLogsTerminal(docker, ref);
-    }
+    },
   );
 
   // Container lifecycle commands — operate on a container by id/name.
@@ -232,60 +257,127 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // these add Start / Stop / Restart / Logs as inline icons next to each row,
   // gated by `viewItem` in `package.json` so only the appropriate ones appear.
   const containerStart = commands.registerCommand(
-    'composeTerminal.containerStart',
+    "composeTerminal.containerStart",
     async (arg: unknown) => {
       const info = normalizeContainerArg(arg);
-      if (!info) return invalidContainerWarn(log, 'containerStart');
+      if (!info) return invalidContainerWarn(log, "containerStart");
       await runContainerLifecycle(
         docker,
         log,
         info,
-        ['start', info.id],
+        ["start", info.id],
         `Starting ${info.name}…`,
-        [containerProvider, composeTreeProvider]
-      ).catch((err) => lifecycleError(log, 'containerStart', err));
-    }
+        [containerProvider, composeTreeProvider],
+      ).catch((err) => lifecycleError(log, "containerStart", err));
+    },
   );
 
   const containerStop = commands.registerCommand(
-    'composeTerminal.containerStop',
+    "composeTerminal.containerStop",
     async (arg: unknown) => {
       const info = normalizeContainerArg(arg);
-      if (!info) return invalidContainerWarn(log, 'containerStop');
+      if (!info) return invalidContainerWarn(log, "containerStop");
       await runContainerLifecycle(
         docker,
         log,
         info,
-        ['stop', info.id],
+        ["stop", info.id],
         `Stopping ${info.name}…`,
-        [containerProvider, composeTreeProvider]
-      ).catch((err) => lifecycleError(log, 'containerStop', err));
-    }
+        [containerProvider, composeTreeProvider],
+      ).catch((err) => lifecycleError(log, "containerStop", err));
+    },
   );
 
   const containerRestart = commands.registerCommand(
-    'composeTerminal.containerRestart',
+    "composeTerminal.containerRestart",
     async (arg: unknown) => {
       const info = normalizeContainerArg(arg);
-      if (!info) return invalidContainerWarn(log, 'containerRestart');
+      if (!info) return invalidContainerWarn(log, "containerRestart");
       await runContainerLifecycle(
         docker,
         log,
         info,
-        ['restart', info.id],
+        ["restart", info.id],
         `Restarting ${info.name}…`,
-        [containerProvider]
-      ).catch((err) => lifecycleError(log, 'containerRestart', err));
-    }
+        [containerProvider],
+      ).catch((err) => lifecycleError(log, "containerRestart", err));
+    },
   );
 
   const containerLogs = commands.registerCommand(
-    'composeTerminal.containerLogs',
+    "composeTerminal.containerLogs",
     async (arg: unknown) => {
       const info = normalizeContainerArg(arg);
-      if (!info) return invalidContainerWarn(log, 'containerLogs');
+      if (!info) return invalidContainerWarn(log, "containerLogs");
       openContainerLogsTerminal(docker, info);
-    }
+    },
+  );
+
+  const showContainerScripts = commands.registerCommand(
+    "composeTerminal.showContainerScripts",
+    async (arg: unknown) => {
+      const info = normalizeContainerArg(arg);
+      if (!info) {
+        log.appendLine(
+          "[warn] showContainerScripts invoked without a valid container ref",
+        );
+        void window.showErrorMessage(
+          "Docker Terminal: showContainerScripts invoked without a valid container ref.",
+        );
+        return;
+      }
+      try {
+        await handleContainerScriptSelection(
+          docker,
+          terminalManager,
+          info,
+          log,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const truncated =
+          message.length > 500 ? `${message.slice(0, 500)}…` : message;
+        log.appendLine(`[error] showContainerScripts failed: ${truncated}`);
+        log.appendLine(
+          err instanceof Error && err.stack ? err.stack : "(no stack)",
+        );
+        void window.showErrorMessage(`Docker Terminal: ${truncated}`);
+      }
+    },
+  );
+
+  const runContainerScript = commands.registerCommand(
+    "composeTerminal.runContainerScript",
+    async (arg: unknown) => {
+      const scriptItem = normalizeScriptTreeItem(arg);
+      if (!scriptItem) {
+        log.appendLine(
+          "[warn] runContainerScript invoked without a valid script tree item",
+        );
+        void window.showErrorMessage(
+          "Docker Terminal: runContainerScript invoked without a valid script item.",
+        );
+        return;
+      }
+      try {
+        await openScriptTerminal(
+          docker,
+          terminalManager,
+          scriptItem.parentInfo,
+          scriptItem.script,
+          log,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const truncated =
+          message.length > 500 ? `${message.slice(0, 500)}…` : message;
+        log.appendLine(`[error] runContainerScript failed: ${truncated}`);
+        log.appendLine(
+          err instanceof Error && err.stack ? err.stack : "(no stack)",
+        );
+        void window.showErrorMessage(`Docker Terminal: ${truncated}`);
+      }
+    },
   );
 
   context.subscriptions.push(
@@ -302,8 +394,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
     containerStop,
     containerRestart,
     containerLogs,
+    showContainerScripts,
+    runContainerScript,
     terminalManager,
-    log
+    log,
   );
 
   installInfoStatusBar(context);
@@ -325,28 +419,37 @@ function installInfoStatusBar(context: ExtensionContext): void {
   };
   const repoUrl = normaliseRepoUrl(pkg.repository);
   if (!repoUrl) return;
-  const openRepo = commands.registerCommand('composeTerminal.openRepo', async () => {
-    await env.openExternal(Uri.parse(repoUrl));
-  });
+  const openRepo = commands.registerCommand(
+    "composeTerminal.openRepo",
+    async () => {
+      await env.openExternal(Uri.parse(repoUrl));
+    },
+  );
   const infoBar = new InfoStatusBar({
-    name: pkg.displayName ?? pkg.name ?? 'Docker Terminal',
-    version: pkg.version ?? '0.0.0',
+    name: pkg.displayName ?? pkg.name ?? "Docker Terminal",
+    version: pkg.version ?? "0.0.0",
     publisher: PUBLISHER_DISPLAY,
     repoUrl,
-    openRepoCommand: 'composeTerminal.openRepo'
+    openRepoCommand: "composeTerminal.openRepo",
   });
   context.subscriptions.push(openRepo, infoBar);
 }
 
 function normaliseRepoUrl(repo: unknown): string | undefined {
-  if (typeof repo === 'string') return repo.replace(/^git\+/, '').replace(/\.git$/, '');
-  if (repo && typeof repo === 'object' && 'url' in repo && typeof repo.url === 'string') {
-    return repo.url.replace(/^git\+/, '').replace(/\.git$/, '');
+  if (typeof repo === "string")
+    return repo.replace(/^git\+/, "").replace(/\.git$/, "");
+  if (
+    repo &&
+    typeof repo === "object" &&
+    "url" in repo &&
+    typeof repo.url === "string"
+  ) {
+    return repo.url.replace(/^git\+/, "").replace(/\.git$/, "");
   }
   return undefined;
 }
 
-const PUBLISHER_DISPLAY = 'CodeMaster Soluções';
+const PUBLISHER_DISPLAY = "CodeMaster Soluções";
 
 export function deactivate(): void {
   // disposables are released via context.subscriptions
@@ -360,27 +463,32 @@ interface OpenShellContext {
   fileRef: ComposeFileRef;
 }
 
-async function pickComposeFile(files: ComposeFileRef[]): Promise<ComposeFileRef | undefined> {
+async function pickComposeFile(
+  files: ComposeFileRef[],
+): Promise<ComposeFileRef | undefined> {
   if (files.length === 1) return files[0];
-  const items: QuickPickItem[] = files.map((f) => ({ label: f.label, description: f.path }));
+  const items: QuickPickItem[] = files.map((f) => ({
+    label: f.label,
+    description: f.path,
+  }));
   const picked = await window.showQuickPick(items, {
-    placeHolder: 'Select docker-compose file'
+    placeHolder: "Select docker-compose file",
   });
   if (!picked) return undefined;
   return files.find((f) => f.label === picked.label);
 }
 
 async function pickService(
-  services: ComposeService[]
+  services: ComposeService[],
 ): Promise<ComposeService | undefined> {
   const items: QuickPickItem[] = services.map((s) => ({
     label: s.name,
     description: s.image,
-    detail: s.workingDir ? `working_dir: ${s.workingDir}` : undefined
+    detail: s.workingDir ? `working_dir: ${s.workingDir}` : undefined,
   }));
   const picked = await window.showQuickPick(items, {
-    placeHolder: 'Select service to open shell into',
-    matchOnDescription: true
+    placeHolder: "Select service to open shell into",
+    matchOnDescription: true,
   });
   if (!picked) return undefined;
   return services.find((s) => s.name === picked.label);
@@ -388,29 +496,31 @@ async function pickService(
 
 async function openShellForService(ctx: OpenShellContext): Promise<void> {
   const pattern =
-    workspace
-      .getConfiguration('composeTerminal')
-      .get<string>('terminalName') ?? '{service} • {project}';
+    workspace.getConfiguration("composeTerminal").get<string>("terminalName") ??
+    "{service} • {project}";
   const terminalName = pattern
-    .replace('{service}', ctx.service.name)
-    .replace('{project}', ctx.project.name);
+    .replace("{service}", ctx.service.name)
+    .replace("{project}", ctx.project.name);
 
   await window.withProgress(
     {
       location: ProgressLocation.Notification,
       title: `Docker Terminal: opening shell in ${ctx.service.name}…`,
-      cancellable: false
+      cancellable: false,
     },
     async () => {
-      const containerId = await ctx.docker.ensureRunning(ctx.fileRef.path, ctx.service.name);
+      const containerId = await ctx.docker.ensureRunning(
+        ctx.fileRef.path,
+        ctx.service.name,
+      );
       const shell = await detectDefaultShell(ctx.docker, containerId);
       ctx.terminalManager.open({
         name: terminalName,
         composeFilePath: ctx.fileRef.path,
         service: ctx.service.name,
-        shell
+        shell,
       });
-    }
+    },
   );
 }
 
@@ -420,14 +530,18 @@ async function openShellForService(ctx: OpenShellContext): Promise<void> {
  * command palette / a programmatic call. Accept either, refuse anything else.
  */
 function normalizeContainerArg(arg: unknown): ContainerInfo | null {
-  if (!arg || typeof arg !== 'object') return null;
+  if (!arg || typeof arg !== "object") return null;
   const obj = arg as Partial<ContainerInfo> & { info?: ContainerInfo };
   // Direct shape (from TreeItem.command.arguments).
-  if (typeof obj.id === 'string' && typeof obj.name === 'string') {
+  if (typeof obj.id === "string" && typeof obj.name === "string") {
     return validateContainer({ ...obj });
   }
   // Wrapped shape (defensive — future tree items may wrap the info).
-  if (obj.info && typeof obj.info.id === 'string' && typeof obj.info.name === 'string') {
+  if (
+    obj.info &&
+    typeof obj.info.id === "string" &&
+    typeof obj.info.name === "string"
+  ) {
     return validateContainer({ ...obj.info });
   }
   return null;
@@ -435,57 +549,103 @@ function normalizeContainerArg(arg: unknown): ContainerInfo | null {
 
 function validateContainer(info: Partial<ContainerInfo>): ContainerInfo | null {
   if (!info.id || !info.name) return null;
-  if (!isValidContainerId(info.id) && !isValidContainerName(info.id)) return null;
+  if (!isValidContainerId(info.id) && !isValidContainerName(info.id))
+    return null;
   if (!isValidContainerName(info.name)) return null;
   return {
     id: info.id,
     name: info.name,
-    image: typeof info.image === 'string' ? info.image : '',
-    status: typeof info.status === 'string' ? info.status : '',
-    state: typeof info.state === 'string' ? info.state : ''
+    image: typeof info.image === "string" ? info.image : "",
+    status: typeof info.status === "string" ? info.status : "",
+    state: typeof info.state === "string" ? info.state : "",
   };
+}
+
+/**
+ * Tolerant input normalizer for script tree-item clicks.
+ *
+ * Accepts either a `ContainerScriptTreeItem` instance (passed via
+ * `TreeItem.command.arguments` when the user clicks a child script) or a
+ * plain-object literal of the same shape. Refuses anything else.
+ */
+function normalizeScriptTreeItem(arg: unknown): ContainerScriptTreeItem | null {
+  if (!arg || typeof arg !== "object") return null;
+  const obj = arg as Partial<ContainerScriptTreeItem> & {
+    kind?: unknown;
+    parentInfo?: unknown;
+    script?: unknown;
+  };
+  if (obj.kind !== "script") return null;
+  const parentInfo = validateContainer(
+    (obj.parentInfo ?? {}) as Partial<ContainerInfo>,
+  );
+  if (!parentInfo) return null;
+  const script = (obj.script ?? {}) as Partial<ScriptEntry>;
+  if (
+    typeof script.name !== "string" ||
+    !script.name ||
+    typeof script.command !== "string" ||
+    (script.source !== "package.json" && script.source !== "Makefile") ||
+    typeof script.filePath !== "string" ||
+    !script.filePath
+  ) {
+    return null;
+  }
+  const treeItem = new ContainerScriptTreeItem(parentInfo, {
+    name: script.name,
+    command: script.command,
+    source: script.source,
+    filePath: script.filePath,
+  });
+  return treeItem;
 }
 
 async function attachToRunningContainer(
   docker: DockerClient,
   terminalManager: TerminalManager,
   info: ContainerInfo,
-  log: OutputChannel
+  log: OutputChannel,
 ): Promise<void> {
   const pattern =
-    workspace.getConfiguration('composeTerminal').get<string>('terminalName') ??
-    '{service} • {project}';
+    workspace.getConfiguration("composeTerminal").get<string>("terminalName") ??
+    "{service} • {project}";
   // No compose project here; substitute "docker" for {project} so the terminal
   // name still renders sensibly.
   const terminalName = pattern
-    .replace('{service}', info.name)
-    .replace('{project}', 'docker');
+    .replace("{service}", info.name)
+    .replace("{project}", "docker");
 
   await window.withProgress(
     {
       location: ProgressLocation.Notification,
       title: `Docker Terminal: opening shell in ${info.name}…`,
-      cancellable: false
+      cancellable: false,
     },
     async () => {
       log.appendLine(`[info] attach: probing shell for ${info.id}`);
       const shell = await detectDefaultShell(docker, info.id);
-      log.appendLine(`[info] attach: shell=${shell} — opening terminal "${terminalName}"`);
+      log.appendLine(
+        `[info] attach: shell=${shell} — opening terminal "${terminalName}"`,
+      );
       try {
         terminalManager.openInContainer({
           name: terminalName,
           cwd: workspace.workspaceFolders?.[0]?.uri.fsPath,
           containerRef: info.id,
-          shell
+          shell,
         });
-        log.appendLine(`[info] attach: terminal created and sendText scheduled`);
+        log.appendLine(
+          `[info] attach: terminal created and sendText scheduled`,
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         log.appendLine(`[error] attach: openInContainer threw: ${message}`);
-        log.appendLine(err instanceof Error && err.stack ? err.stack : '(no stack)');
+        log.appendLine(
+          err instanceof Error && err.stack ? err.stack : "(no stack)",
+        );
         throw err;
       }
-    }
+    },
   );
 }
 
@@ -501,26 +661,29 @@ async function attachToRunningContainer(
  * Anything else returns null and the command refuses to fire.
  */
 function normalizeServiceRef(arg: unknown): ComposeServiceRef | null {
-  if (!arg || typeof arg !== 'object') return null;
+  if (!arg || typeof arg !== "object") return null;
   const obj = arg as Partial<ComposeServiceRef> & {
     kind?: unknown;
     fileRef?: { path?: unknown; label?: unknown };
     service?: { name?: unknown };
   };
   if (
-    typeof obj.composeFilePath === 'string' &&
-    typeof obj.serviceName === 'string' &&
+    typeof obj.composeFilePath === "string" &&
+    typeof obj.serviceName === "string" &&
     obj.composeFilePath &&
     obj.serviceName
   ) {
-    return { composeFilePath: obj.composeFilePath, serviceName: obj.serviceName };
+    return {
+      composeFilePath: obj.composeFilePath,
+      serviceName: obj.serviceName,
+    };
   }
   if (
-    obj.kind === 'service' &&
+    obj.kind === "service" &&
     obj.fileRef &&
-    typeof obj.fileRef.path === 'string' &&
+    typeof obj.fileRef.path === "string" &&
     obj.service &&
-    typeof obj.service.name === 'string'
+    typeof obj.service.name === "string"
   ) {
     return { composeFilePath: obj.fileRef.path, serviceName: obj.service.name };
   }
@@ -530,19 +693,21 @@ function normalizeServiceRef(arg: unknown): ComposeServiceRef | null {
 async function runShellAction(
   docker: DockerClient,
   terminalManager: TerminalManager,
-  ref: ComposeServiceRef
+  ref: ComposeServiceRef,
 ): Promise<void> {
   const project = await parseComposeFile(ref.composeFilePath);
   const service = project.services.find((s) => s.name === ref.serviceName);
   if (!service) {
-    throw new Error(`Service "${ref.serviceName}" not found in ${ref.composeFilePath}.`);
+    throw new Error(
+      `Service "${ref.serviceName}" not found in ${ref.composeFilePath}.`,
+    );
   }
   await openShellForService({
     docker,
     terminalManager,
     project,
     service,
-    fileRef: { label: project.name, path: ref.composeFilePath }
+    fileRef: { label: project.name, path: ref.composeFilePath },
   });
 }
 
@@ -556,32 +721,38 @@ async function runComposeLifecycle(
   ref: ComposeServiceRef,
   argv: string[],
   title: string,
-  refreshers: LifecycleRefresher[]
+  refreshers: LifecycleRefresher[],
 ): Promise<void> {
   await window.withProgress(
     {
       location: ProgressLocation.Notification,
       title: `Docker Terminal: ${title}`,
-      cancellable: false
+      cancellable: false,
     },
     async () => {
       const result = await docker.runCompose(ref.composeFilePath, argv);
       if (result.code !== 0) {
         const message =
-          (result.stderr || result.stdout || `exit ${result.code}`).trim().slice(0, 500) ||
-          `exit ${result.code}`;
+          (result.stderr || result.stdout || `exit ${result.code}`)
+            .trim()
+            .slice(0, 500) || `exit ${result.code}`;
         log.appendLine(
-          `[error] compose ${argv.join(' ')} ${ref.serviceName} failed (code ${result.code}): ${message}`
+          `[error] compose ${argv.join(" ")} ${ref.serviceName} failed (code ${result.code}): ${message}`,
         );
-        throw new Error(`docker compose ${argv.join(' ')} ${ref.serviceName} failed: ${message}`);
+        throw new Error(
+          `docker compose ${argv.join(" ")} ${ref.serviceName} failed: ${message}`,
+        );
       }
-      log.appendLine(`[info] compose ${argv.join(' ')} ${ref.serviceName} ok`);
+      log.appendLine(`[info] compose ${argv.join(" ")} ${ref.serviceName} ok`);
       for (const r of refreshers) r.refresh();
-    }
+    },
   );
 }
 
-function openComposeLogsTerminal(_docker: DockerClient, ref: ComposeServiceRef): void {
+function openComposeLogsTerminal(
+  _docker: DockerClient,
+  ref: ComposeServiceRef,
+): void {
   // Open a dedicated terminal that tails the service logs interactively.
   // We shell out via the same `docker compose` invocation so v1/v2 fallback
   // and project name resolution stay consistent with the rest of the
@@ -593,7 +764,7 @@ function openComposeLogsTerminal(_docker: DockerClient, ref: ComposeServiceRef):
   const cmd = `docker compose -p "${project}" -f "${ref.composeFilePath}" logs -f "${ref.serviceName}"`;
   const term = window.createTerminal({
     name: `logs • ${ref.serviceName}`,
-    cwd: path.dirname(ref.composeFilePath)
+    cwd: path.dirname(ref.composeFilePath),
   });
   term.show();
   term.sendText(cmd);
@@ -605,58 +776,228 @@ async function runContainerLifecycle(
   info: ContainerInfo,
   argv: string[],
   title: string,
-  refreshers: LifecycleRefresher[]
+  refreshers: LifecycleRefresher[],
 ): Promise<void> {
   await window.withProgress(
     {
       location: ProgressLocation.Notification,
       title: `Docker Terminal: ${title}`,
-      cancellable: false
+      cancellable: false,
     },
     async () => {
       const result = await docker.runDocker(argv);
       if (result.code !== 0) {
         const message =
-          (result.stderr || result.stdout || `exit ${result.code}`).trim().slice(0, 500) ||
-          `exit ${result.code}`;
+          (result.stderr || result.stdout || `exit ${result.code}`)
+            .trim()
+            .slice(0, 500) || `exit ${result.code}`;
         log.appendLine(
-          `[error] docker ${argv.join(' ')} ${info.id} failed (code ${result.code}): ${message}`
+          `[error] docker ${argv.join(" ")} ${info.id} failed (code ${result.code}): ${message}`,
         );
-        throw new Error(`docker ${argv.join(' ')} ${info.id} failed: ${message}`);
+        throw new Error(
+          `docker ${argv.join(" ")} ${info.id} failed: ${message}`,
+        );
       }
-      log.appendLine(`[info] docker ${argv.join(' ')} ${info.id} ok`);
+      log.appendLine(`[info] docker ${argv.join(" ")} ${info.id} ok`);
       for (const r of refreshers) r.refresh();
-    }
+    },
   );
 }
 
-function openContainerLogsTerminal(_docker: DockerClient, info: ContainerInfo): void {
+function openContainerLogsTerminal(
+  _docker: DockerClient,
+  info: ContainerInfo,
+): void {
   const dockerCmd =
-    workspace.getConfiguration('composeTerminal').get<string>('dockerCommand') ?? 'docker';
+    workspace
+      .getConfiguration("composeTerminal")
+      .get<string>("dockerCommand") ?? "docker";
   // `--details` prefixes each line with its source (stdout/stderr).
   const cmd = `${dockerCmd} logs -f --details "${info.id}"`;
   const term = window.createTerminal({
     name: `logs • ${info.name}`,
-    cwd: workspace.workspaceFolders?.[0]?.uri.fsPath
+    cwd: workspace.workspaceFolders?.[0]?.uri.fsPath,
   });
   term.show();
   term.sendText(cmd);
 }
 
+interface ScriptQuickPickItem extends QuickPickItem {
+  script: ScriptEntry;
+}
+
+async function handleContainerScriptSelection(
+  docker: DockerClient,
+  terminalManager: TerminalManager,
+  info: ContainerInfo,
+  log: OutputChannel,
+): Promise<void> {
+  if (info.state !== "running") {
+    const start = await window.showWarningMessage(
+      `Container "${info.name}" is not running. Start it first?`,
+      "Start Container",
+      "Cancel",
+    );
+    if (start !== "Start Container") return;
+    await runContainerLifecycle(
+      docker,
+      log,
+      info,
+      ["start", info.id],
+      `Starting ${info.name}…`,
+      [],
+    ).catch((err) => lifecycleError(log, "containerStart", err));
+    const recheck = await docker.listContainers();
+    const updated = recheck.find(
+      (c) => c.id === info.id || c.name === info.name,
+    );
+    if (!updated || updated.state !== "running") {
+      void window.showErrorMessage(
+        `Docker Terminal: container "${info.name}" did not start.`,
+      );
+      return;
+    }
+    info = { ...info, ...updated };
+  }
+
+  const scripts = await window.withProgress(
+    {
+      location: ProgressLocation.Notification,
+      title: `Docker Terminal: discovering scripts in ${info.name}…`,
+      cancellable: false,
+    },
+    async () => discoverScripts(docker, info.id),
+  );
+
+  if (scripts.length === 0) {
+    const openAnyway = await window.showInformationMessage(
+      `No package.json scripts or Makefile targets found in "${info.name}".`,
+      "Open Shell Anyway",
+      "OK",
+    );
+    if (openAnyway === "Open Shell Anyway") {
+      await attachToRunningContainer(docker, terminalManager, info, log);
+    }
+    return;
+  }
+
+  const pkgScripts = scripts.filter((s) => s.source === "package.json");
+  const makeTargets = scripts.filter((s) => s.source === "Makefile");
+
+  const items: ScriptQuickPickItem[] = [];
+
+  if (pkgScripts.length > 0) {
+    for (const s of pkgScripts) {
+      items.push({
+        label: `$(package) ${s.name}`,
+        description: s.command,
+        detail: `package.json • ${s.filePath}`,
+        script: s,
+      });
+    }
+  }
+  if (makeTargets.length > 0) {
+    for (const s of makeTargets) {
+      items.push({
+        label: `$(tools) ${s.name}`,
+        description: s.command,
+        detail: `Makefile • ${s.filePath}`,
+        script: s,
+      });
+    }
+  }
+
+  const actionPick: QuickPickItem & { action: "shell" | "cancel" } = {
+    label: "$(terminal) Open interactive shell",
+    detail: "Skip scripts and open a shell in the container",
+    action: "shell",
+  };
+  items.unshift(actionPick as unknown as ScriptQuickPickItem);
+
+  const picked = await window.showQuickPick(items, {
+    placeHolder: `Select a script or command to run in ${info.name}`,
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
+
+  if (!picked) return;
+
+  if ((picked as unknown as { action?: string }).action === "shell") {
+    await attachToRunningContainer(docker, terminalManager, info, log);
+    return;
+  }
+
+  const script = (picked as ScriptQuickPickItem).script;
+  log.appendLine(
+    `[info] script selection: container=${info.name} source=${script.source} name=${script.name} path=${script.filePath}`,
+  );
+  await openScriptTerminal(docker, terminalManager, info, script, log);
+}
+
+async function openScriptTerminal(
+  docker: DockerClient,
+  terminalManager: TerminalManager,
+  info: ContainerInfo,
+  script: ScriptEntry,
+  log: OutputChannel,
+): Promise<void> {
+  const pattern =
+    workspace.getConfiguration("composeTerminal").get<string>("terminalName") ??
+    "{service} • {project}";
+  const terminalName = pattern
+    .replace("{service}", `${info.name}:${script.name}`)
+    .replace("{project}", script.source);
+
+  await window.withProgress(
+    {
+      location: ProgressLocation.Notification,
+      title: `Docker Terminal: running ${script.name} in ${info.name}…`,
+      cancellable: false,
+    },
+    async () => {
+      log.appendLine(`[info] script: probing shell for ${info.id}`);
+      const shell = await detectDefaultShell(docker, info.id);
+      log.appendLine(`[info] script: shell=${shell}`);
+
+      const workingDir = path.dirname(script.filePath);
+      const bannerLabel =
+        script.source === "package.json"
+          ? `npm run ${script.name}`
+          : script.command;
+
+      terminalManager.runCommandInContainer({
+        name: terminalName,
+        cwd: workspace.workspaceFolders?.[0]?.uri.fsPath,
+        containerRef: info.id,
+        shell,
+        workingDir: workingDir === "." ? undefined : workingDir,
+        command: script.command,
+        bannerLabel,
+        keepShellOpen: true,
+      });
+    },
+  );
+}
+
 function invalidRefWarn(log: OutputChannel, name: string): void {
   log.appendLine(`[warn] ${name} invoked without a valid service ref`);
-  void window.showErrorMessage(`Docker Terminal: ${name} invoked without a valid service ref.`);
+  void window.showErrorMessage(
+    `Docker Terminal: ${name} invoked without a valid service ref.`,
+  );
 }
 
 function invalidContainerWarn(log: OutputChannel, name: string): void {
   log.appendLine(`[warn] ${name} invoked without a valid container ref`);
-  void window.showErrorMessage(`Docker Terminal: ${name} invoked without a valid container ref.`);
+  void window.showErrorMessage(
+    `Docker Terminal: ${name} invoked without a valid container ref.`,
+  );
 }
 
 function lifecycleError(log: OutputChannel, name: string, err: unknown): void {
   const message = err instanceof Error ? err.message : String(err);
-  const truncated = message.length > 500 ? `${message.slice(0, 500)}…` : message;
+  const truncated =
+    message.length > 500 ? `${message.slice(0, 500)}…` : message;
   log.appendLine(`[error] ${name} failed: ${truncated}`);
-  log.appendLine(err instanceof Error && err.stack ? err.stack : '(no stack)');
+  log.appendLine(err instanceof Error && err.stack ? err.stack : "(no stack)");
   void window.showErrorMessage(`Docker Terminal: ${truncated}`);
 }

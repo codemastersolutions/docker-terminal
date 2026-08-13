@@ -1,12 +1,12 @@
-import * as path from 'path';
-import { Disposable, OutputChannel, Terminal, window, workspace } from 'vscode';
+import * as path from "path";
+import { Disposable, OutputChannel, Terminal, window, workspace } from "vscode";
 import {
   isValidContainerId,
   isValidContainerName,
   isValidServiceName,
-  isValidShellPath
-} from '../compose/validation';
-import { getHostClearCommand } from '../host/clearCommand';
+  isValidShellPath,
+} from "../compose/validation";
+import { getHostClearCommand } from "../host/clearCommand";
 
 export interface OpenShellOptions {
   name: string;
@@ -25,6 +25,34 @@ export interface OpenContainerShellOptions {
    */
   containerRef: string;
   shell: string;
+}
+
+export interface RunContainerCommandOptions {
+  name: string;
+  cwd?: string;
+  containerRef: string;
+  shell: string;
+  /**
+   * Directory inside the container where the command should be run.
+   * Will be prefixed with `cd '<workingDir>' && `.
+   */
+  workingDir?: string;
+  /**
+   * The command line to execute inside the container (e.g. "npm run build"
+   * or "make test"). It is run through `shell -c`, so shell operators work.
+   */
+  command: string;
+  /**
+   * Optional label used in the banner line printed before the command runs
+   * (defaults to `command`). Shown with ANSI cyan highlight.
+   */
+  bannerLabel?: string;
+  /**
+   * When true (default) a trailing interactive shell is kept open after the
+   * command exits so the user can inspect the result. When false the exec
+   * ends after the command finishes.
+   */
+  keepShellOpen?: boolean;
 }
 
 export class TerminalManager implements Disposable {
@@ -55,7 +83,7 @@ export class TerminalManager implements Disposable {
 
     const terminal = window.createTerminal({
       name: opts.name,
-      cwd: path.dirname(opts.composeFilePath)
+      cwd: path.dirname(opts.composeFilePath),
     });
 
     terminal.show();
@@ -63,7 +91,9 @@ export class TerminalManager implements Disposable {
     // Service and shell are both restricted to [a-zA-Z0-9/._+-], so the
     // double quotes around them are sufficient — no further escaping needed.
     const execCommand = `${this.dockerCommand()} compose exec -it "${opts.service}" "${opts.shell}"`;
-    this.log.appendLine(`[info] open(compose): service=${opts.service} shell=${opts.shell} cmd=${execCommand}`);
+    this.log.appendLine(
+      `[info] open(compose): service=${opts.service} shell=${opts.shell} cmd=${execCommand}`,
+    );
     this.scheduleSendText(terminal, execCommand);
 
     this.terminals.set(key, terminal);
@@ -88,7 +118,10 @@ export class TerminalManager implements Disposable {
    * compose involved). Caller is responsible for shell detection.
    */
   openInContainer(opts: OpenContainerShellOptions): Terminal {
-    if (!isValidContainerId(opts.containerRef) && !isValidContainerName(opts.containerRef)) {
+    if (
+      !isValidContainerId(opts.containerRef) &&
+      !isValidContainerName(opts.containerRef)
+    ) {
       throw new Error(`Invalid container ref: ${truncate(opts.containerRef)}`);
     }
     if (!isValidShellPath(opts.shell)) {
@@ -104,14 +137,86 @@ export class TerminalManager implements Disposable {
 
     const terminal = window.createTerminal({
       name: opts.name,
-      cwd: opts.cwd
+      cwd: opts.cwd,
     });
 
     terminal.show();
 
     const execCommand = `${this.dockerCommand()} exec -it "${opts.containerRef}" "${opts.shell}"`;
     this.log.appendLine(
-      `[info] openInContainer: ref=${opts.containerRef} shell=${opts.shell} cmd=${execCommand}`
+      `[info] openInContainer: ref=${opts.containerRef} shell=${opts.shell} cmd=${execCommand}`,
+    );
+    this.scheduleSendText(terminal, execCommand);
+
+    this.terminals.set(key, terminal);
+
+    return terminal;
+  }
+
+  /**
+   * Run a specific one-shot command inside a container via `docker exec`.
+   *
+   * Behaviour:
+   *   - Uses the caller-supplied shell (e.g. from `detectDefaultShell`) to
+   *     wrap the command via `-c`, so shell operators and pipelines work.
+   *   - When `workingDir` is supplied the command is preceded by `cd '<dir>'`
+   *     so relative paths inside the container resolve against it.
+   *   - A cyan banner (`→ <command>`) is printed before execution and a green
+   *     `✓ exit $?` line after, so the user can clearly see what ran and its
+   *     status.
+   *   - Unless `keepShellOpen=false` is passed, an interactive `exec <shell>`
+   *     is chained afterwards — after the command exits, the user remains at
+   *     an interactive prompt inside the container to inspect state.
+   *   - The `buildCommand` wrapper applies host `clearOnExit` bracketing.
+   */
+  runCommandInContainer(opts: RunContainerCommandOptions): Terminal {
+    if (
+      !isValidContainerId(opts.containerRef) &&
+      !isValidContainerName(opts.containerRef)
+    ) {
+      throw new Error(`Invalid container ref: ${truncate(opts.containerRef)}`);
+    }
+    if (!isValidShellPath(opts.shell)) {
+      throw new Error(`Invalid shell path: ${truncate(opts.shell)}`);
+    }
+
+    const dockerCmd = this.dockerCommand();
+    const safeRef = opts.containerRef.replace(/'/g, "'\\''");
+    const safeShell = opts.shell.replace(/'/g, "'\\''");
+    const banner = (opts.bannerLabel ?? opts.command).replace(/'/g, "'\\''");
+    const keep = opts.keepShellOpen ?? true;
+
+    const cdPart = opts.workingDir
+      ? `cd '${opts.workingDir.replace(/'/g, "'\\''")}' && `
+      : "";
+    const exitBanner = keep
+      ? ` ; printf '\\033[1;32m✓ exit \\$?\\033[0m\\n' ; exec '${safeShell}'`
+      : "";
+
+    const inner =
+      `${cdPart}` +
+      `printf '\\033[1;36m→ %s\\033[0m\\n' '${banner}' && ` +
+      `${opts.command}` +
+      exitBanner;
+
+    const execCommand = `${dockerCmd} exec -it '${safeRef}' '${safeShell}' -c '${inner.replace(/'/g, "'\\''")}'`;
+
+    const key = `containerCmd::${opts.containerRef}::${opts.command}`;
+    const existing = this.terminals.get(key);
+    if (existing && this.isAlive(existing)) {
+      existing.show();
+      return existing;
+    }
+
+    const terminal = window.createTerminal({
+      name: opts.name,
+      cwd: opts.cwd,
+    });
+
+    terminal.show();
+
+    this.log.appendLine(
+      `[info] runCommandInContainer: ref=${opts.containerRef} shell=${opts.shell} workingDir=${opts.workingDir ?? "(none)"} command=${opts.command}`,
     );
     this.scheduleSendText(terminal, execCommand);
 
@@ -121,7 +226,11 @@ export class TerminalManager implements Disposable {
   }
 
   private dockerCommand(): string {
-    return workspace.getConfiguration('composeTerminal').get<string>('dockerCommand') ?? 'docker';
+    return (
+      workspace
+        .getConfiguration("composeTerminal")
+        .get<string>("dockerCommand") ?? "docker"
+    );
   }
 
   /**
@@ -133,7 +242,9 @@ export class TerminalManager implements Disposable {
    */
   private buildCommand(execCommand: string): string {
     const clearOnExit =
-      workspace.getConfiguration('composeTerminal').get<boolean>('clearOnExit') ?? true;
+      workspace
+        .getConfiguration("composeTerminal")
+        .get<boolean>("clearOnExit") ?? true;
     if (!clearOnExit) return execCommand;
     return `${getHostClearCommand()} && ${execCommand} && ${getHostClearCommand()}`;
   }
@@ -146,7 +257,9 @@ export class TerminalManager implements Disposable {
       // closed the panel before the timer ran). `sendText` on a disposed
       // terminal throws, which would surface as an unhandled rejection.
       if (!window.terminals.includes(terminal)) {
-        this.log.appendLine(`[warn] sendText skipped: terminal no longer alive`);
+        this.log.appendLine(
+          `[warn] sendText skipped: terminal no longer alive`,
+        );
         return;
       }
       try {
@@ -165,22 +278,30 @@ export class TerminalManager implements Disposable {
     try {
       const pidPromise = terminal.processId;
       if (!pidPromise) {
-        this.log.appendLine(`[warn] processId unavailable (undefined) — using fallback delay`);
+        this.log.appendLine(
+          `[warn] processId unavailable (undefined) — using fallback delay`,
+        );
         setTimeout(send, TerminalManager.PROCESS_WAIT_FALLBACK_MS);
         return;
       }
       pidPromise.then(
         (pid) => {
-          this.log.appendLine(`[info] processId resolved: ${pid} — scheduling sendText in ${TerminalManager.PROMPT_READY_DELAY_MS}ms`);
+          this.log.appendLine(
+            `[info] processId resolved: ${pid} — scheduling sendText in ${TerminalManager.PROMPT_READY_DELAY_MS}ms`,
+          );
           setTimeout(send, TerminalManager.PROMPT_READY_DELAY_MS);
         },
         (err) => {
-          this.log.appendLine(`[warn] processId rejected: ${err instanceof Error ? err.message : String(err)} — using fallback delay`);
+          this.log.appendLine(
+            `[warn] processId rejected: ${err instanceof Error ? err.message : String(err)} — using fallback delay`,
+          );
           setTimeout(send, TerminalManager.PROCESS_WAIT_FALLBACK_MS);
-        }
+        },
       );
     } catch (err) {
-      this.log.appendLine(`[warn] processId access threw: ${err instanceof Error ? err.message : String(err)} — using fallback delay`);
+      this.log.appendLine(
+        `[warn] processId access threw: ${err instanceof Error ? err.message : String(err)} — using fallback delay`,
+      );
       setTimeout(send, TerminalManager.PROCESS_WAIT_FALLBACK_MS);
     }
   }

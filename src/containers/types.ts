@@ -1,13 +1,21 @@
 import type { ContainerInfo } from '../docker/client';
+import type { ScriptEntry } from './scripts';
 
-/**
- * Wrapper so the TreeDataProvider can hand a stable object back to VS Code.
- * The underlying `ContainerInfo` is what's stored; this class only adds the
- * collapsible state (always None for leaf containers).
- */
-export class ContainerTreeItem {
+export type ContainerTreeItem =
+  | ContainerGroupTreeItem
+  | ContainerScriptTreeItem;
+
+export class ContainerGroupTreeItem {
+  readonly kind = 'container' as const;
   constructor(
-    public readonly info: ContainerInfo,
-    public readonly collapsibleState: 0 = 0
+    public readonly info: ContainerInfo
+  ) {}
+}
+
+export class ContainerScriptTreeItem {
+  readonly kind = 'script' as const;
+  constructor(
+    public readonly parentInfo: ContainerInfo,
+    public readonly script: ScriptEntry
   ) {}
 }

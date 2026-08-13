@@ -115,6 +115,18 @@
         "category": "Docker Terminal"
       },
       {
+        "command": "composeTerminal.showContainerScripts",
+        "title": "Run Script / Make Command in Container",
+        "icon": "$(play)",
+        "category": "Docker Terminal"
+      },
+      {
+        "command": "composeTerminal.runContainerScript",
+        "title": "Run Container Script / Make Target",
+        "icon": "$(play)",
+        "category": "Docker Terminal"
+      },
+      {
         "command": "composeTerminal.openRepo",
         "title": "Open Repository",
         "icon": "$(link-external)",
@@ -259,7 +271,7 @@
     "watch": "node esbuild.config.js --watch",
     "typecheck": "tsc --noEmit",
     "package": "npm run build && vsce package --allow-missing-repository --no-git-tag-version",
-    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts && tsx test/container.smoke.ts && tsx test/composeTree.smoke.ts",
+    "test:unit": "tsx test/parser.smoke.ts && tsx test/sanitize.smoke.ts && tsx test/argv.smoke.ts && tsx test/validation.smoke.ts && tsx test/clearCommand.smoke.ts && tsx test/container.smoke.ts && tsx test/composeTree.smoke.ts && tsx test/scripts.smoke.ts",
     "test:integration": "tsx test/compose-cli.smoke.ts",
     "test:e2e": "tsx test/e2e.smoke.ts",
     "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
@@ -274,7 +286,7 @@
     "js-yaml": "^5.2.1"
   },
   "devDependencies": {
-    "@codemastersolutions/commitzero": "^0.0.53",
+    "@codemastersolutions/commitzero": "^0.0.55",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^26.1.1",
     "@types/vscode": "1.85.0",
@@ -292,6 +304,6 @@
     "glob": "^13.0.6"
   },
   "allowScripts": {
-    "@codemastersolutions/commitzero@0.0.53": true
+    "@codemastersolutions/commitzero@0.0.55": true
   }
 }
