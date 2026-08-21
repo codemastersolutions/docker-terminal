@@ -1,3 +1,4 @@
+import * as path from "path";
 import type { DockerClient } from "../docker/client";
 import {
   isValidContainerId,
@@ -26,6 +27,24 @@ const COMMON_WORKDIRS = [
   "/src",
 ];
 
+const EXCLUDED_DIRS = [
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  ".nuxt",
+  ".output",
+  ".cache",
+  ".turbo",
+  "coverage",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "vendor",
+  ".sass-cache",
+];
+
 const FILE_CHECK_BATCH = [
   {
     file: "package.json",
@@ -39,6 +58,14 @@ const FILE_CHECK_BATCH = [
   },
 ];
 
+const FIND_MAX_DEPTH = 4;
+
+export function isInsideHiddenDir(filePath: string): boolean {
+  const parts = filePath.split("/").filter(Boolean);
+  parts.pop();
+  return parts.some((segment) => segment.startsWith("."));
+}
+
 export async function discoverScripts(
   docker: DockerClient,
   containerRef: string,
@@ -51,27 +78,31 @@ export async function discoverScripts(
   }
 
   const workdirs = await discoverWorkdirs(docker, containerRef);
+  const allFiles: { filePath: string; source: "package.json" | "Makefile" }[] =
+    [];
   const checked = new Set<string>();
-  const all: ScriptEntry[] = [];
 
   for (const dir of workdirs) {
-    for (const check of FILE_CHECK_BATCH) {
-      const fullPath = dir === "/" ? `/${check.file}` : `${dir}/${check.file}`;
-      const normalized = fullPath.replace(/\/+/g, "/");
+    const found = await findScriptFilesInDir(docker, containerRef, dir);
+    for (const f of found) {
+      const normalized = f.filePath.replace(/\/+/g, "/");
+      if (isInsideHiddenDir(normalized)) continue;
       if (checked.has(normalized)) continue;
       checked.add(normalized);
-
-      try {
-        const content = await readFileInContainer(
-          docker,
-          containerRef,
-          normalized,
-        );
-        if (content === null) continue;
-        const entries = check.parser(content, normalized);
-        all.push(...entries);
-      } catch {}
+      allFiles.push(f);
     }
+  }
+
+  const all: ScriptEntry[] = [];
+  for (const { filePath, source } of allFiles) {
+    try {
+      const content = await readFileInContainer(docker, containerRef, filePath);
+      if (content === null) continue;
+      const parser = FILE_CHECK_BATCH.find((f) => f.source === source)?.parser;
+      if (!parser) continue;
+      const entries = parser(content, filePath);
+      all.push(...entries);
+    } catch {}
   }
 
   const seen = new Map<string, ScriptEntry>();
@@ -80,6 +111,52 @@ export async function discoverScripts(
     if (!seen.has(key)) seen.set(key, entry);
   }
   return Array.from(seen.values());
+}
+
+async function findScriptFilesInDir(
+  docker: DockerClient,
+  containerRef: string,
+  baseDir: string,
+): Promise<{ filePath: string; source: "package.json" | "Makefile" }[]> {
+  const results: { filePath: string; source: "package.json" | "Makefile" }[] =
+    [];
+  const cleanDir = baseDir.replace(/\/+$/, "") || "/";
+
+  const excludedExpr = EXCLUDED_DIRS.map((d) => `-name ${d}`).join(" -o ");
+  const findCmd = [
+    "find",
+    `"${cleanDir}"`,
+    `-maxdepth ${FIND_MAX_DEPTH}`,
+    `\\( -type d \\( -name ".*" -o ${excludedExpr} \\) \\) -prune -o`,
+    `-type f`,
+    `\\( -name "package.json" -o -name "Makefile" \\)`,
+    "-print 2>/dev/null",
+  ].join(" ");
+
+  try {
+    const result = await docker.execInContainer(containerRef, [
+      "sh",
+      "-c",
+      findCmd,
+    ]);
+    if (result.code !== 0) return [];
+    const lines = result.stdout
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    for (const line of lines) {
+      const normalized = line.replace(/\/+/g, "/");
+      const basename = path.posix.basename(normalized);
+      if (basename === "package.json") {
+        results.push({ filePath: normalized, source: "package.json" });
+      } else if (basename === "Makefile") {
+        results.push({ filePath: normalized, source: "Makefile" });
+      }
+    }
+  } catch {}
+
+  return results;
 }
 
 async function discoverWorkdirs(
@@ -206,4 +283,13 @@ export function parseMakefileTargets(
     }
   }
   return entries;
+}
+
+export function getParentFolderName(filePath: string): {
+  folderPath: string;
+  folderName: string;
+} {
+  const dir = path.posix.dirname(filePath);
+  const name = dir === "/" ? "/" : path.posix.basename(dir);
+  return { folderPath: dir, folderName: name };
 }

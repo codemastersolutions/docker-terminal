@@ -11,7 +11,11 @@ import {
 } from "vscode";
 import * as path from "path";
 import { findComposeFiles, parseComposeFile } from "./compose/parser";
-import { ComposeServiceRef, ComposeTreeProvider } from "./compose/provider";
+import {
+  ComposeScriptTreeItem,
+  ComposeServiceRef,
+  ComposeTreeProvider,
+} from "./compose/provider";
 import type {
   ComposeFileRef,
   ComposeProject,
@@ -349,8 +353,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
   const runContainerScript = commands.registerCommand(
     "composeTerminal.runContainerScript",
     async (arg: unknown) => {
-      const scriptItem = normalizeScriptTreeItem(arg);
-      if (!scriptItem) {
+      const scriptCtx = await normalizeAnyScriptTreeItem(
+        arg,
+        composeTreeProvider,
+      );
+      if (!scriptCtx) {
         log.appendLine(
           "[warn] runContainerScript invoked without a valid script tree item",
         );
@@ -363,8 +370,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
         await openScriptTerminal(
           docker,
           terminalManager,
-          scriptItem.parentInfo,
-          scriptItem.script,
+          scriptCtx.parentInfo,
+          scriptCtx.script,
           log,
         );
       } catch (err) {
@@ -565,8 +572,8 @@ function validateContainer(info: Partial<ContainerInfo>): ContainerInfo | null {
  * Tolerant input normalizer for script tree-item clicks.
  *
  * Accepts either a `ContainerScriptTreeItem` instance (passed via
- * `TreeItem.command.arguments` when the user clicks a child script) or a
- * plain-object literal of the same shape. Refuses anything else.
+ * `TreeItem.command.arguments` from the Containers view) or a plain-object
+ * literal of the same shape. Refuses anything else.
  */
 function normalizeScriptTreeItem(arg: unknown): ContainerScriptTreeItem | null {
   if (!arg || typeof arg !== "object") return null;
@@ -598,6 +605,84 @@ function normalizeScriptTreeItem(arg: unknown): ContainerScriptTreeItem | null {
     filePath: script.filePath,
   });
   return treeItem;
+}
+
+interface ResolvedScriptContext {
+  parentInfo: ContainerInfo;
+  script: ScriptEntry;
+}
+
+async function normalizeAnyScriptTreeItem(
+  arg: unknown,
+  composeProvider: ComposeTreeProvider,
+): Promise<ResolvedScriptContext | null> {
+  if (!arg || typeof arg !== "object") return null;
+  const obj = arg as { kind?: unknown };
+  if (obj.kind === "script") {
+    const asContainer = arg as Partial<ContainerScriptTreeItem> & {
+      parentInfo?: unknown;
+      script?: unknown;
+    };
+    if (asContainer.parentInfo) {
+      const containerItem = normalizeScriptTreeItem(arg);
+      if (containerItem) {
+        return {
+          parentInfo: containerItem.parentInfo,
+          script: containerItem.script,
+        };
+      }
+    }
+    const asCompose = arg as Partial<ComposeScriptTreeItem> & {
+      service?: unknown;
+      fileRef?: unknown;
+      script?: unknown;
+      projectName?: unknown;
+    };
+    if (asCompose.service && asCompose.fileRef && asCompose.script) {
+      const script = (asCompose.script ?? {}) as Partial<ScriptEntry>;
+      if (
+        typeof script.name !== "string" ||
+        !script.name ||
+        typeof script.command !== "string" ||
+        (script.source !== "package.json" && script.source !== "Makefile") ||
+        typeof script.filePath !== "string" ||
+        !script.filePath
+      ) {
+        return null;
+      }
+      let parentInfo: ContainerInfo;
+      try {
+        const item = new ComposeScriptTreeItem(
+          (asCompose.fileRef ?? {}) as never,
+          (asCompose.service ?? {}) as never,
+          typeof asCompose.projectName === "string"
+            ? asCompose.projectName
+            : "",
+          script as ScriptEntry,
+        );
+        const resolved =
+          await composeProvider.resolveContainerInfoFromScript(item);
+        parentInfo = resolved;
+      } catch {
+        const svc = (asCompose.service ?? {}) as Partial<ComposeService> & {
+          name?: unknown;
+          image?: unknown;
+        };
+        const name = typeof svc.name === "string" ? svc.name : "";
+        const image = typeof svc.image === "string" ? svc.image : "";
+        if (!name) return null;
+        parentInfo = {
+          id: "",
+          name,
+          image,
+          status: "",
+          state: "running",
+        };
+      }
+      return { parentInfo, script: script as ScriptEntry };
+    }
+  }
+  return null;
 }
 
 async function attachToRunningContainer(

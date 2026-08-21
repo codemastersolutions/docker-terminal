@@ -15,6 +15,7 @@ export interface ContainerInfo {
    * should be enabled.
    */
   state: string;
+  labels?: Record<string, string>;
 }
 
 const MAX_ERROR_CHARS = 500;

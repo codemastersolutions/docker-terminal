@@ -11,31 +11,20 @@ import {
 } from "vscode";
 import { DockerClient } from "../docker/client";
 import {
+  ContainerFolderTreeItem,
   ContainerGroupTreeItem,
   ContainerScriptTreeItem,
   ContainerTreeItem,
 } from "./types";
-import { discoverScripts, ScriptEntry } from "./scripts";
+import {
+  discoverScripts,
+  getParentFolderName,
+  isInsideHiddenDir,
+  ScriptEntry,
+} from "./scripts";
 
 const REFRESH_DEBOUNCE_MS = 200;
 
-/**
- * Sidebar tree source for the **Containers** view.
- *
- * Two-level tree:
- *   - container → a host container (running or stopped). Collapsible.
- *     Expanding lazily discovers `package.json` scripts and `Makefile`
- *     targets inside the container and renders each as a leaf "script"
- *     child with its own context value.
- *   - script → a leaf under a container. Clicking it runs the command.
- *
- * Sources from `docker ps -a` so a workspace without any
- * docker-compose.{yml,yaml} still lists every container on the host — running
- * or stopped. The per-row `.State` column decides which lifecycle icons
- * (`Start` / `Stop` / `Restart` / `Logs`) appear via `contextValue`.
- * Refreshing is debounced to coalesce repeated clicks while a previous load
- * is still in flight.
- */
 export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem> {
   private readonly _onDidChange = new EventEmitter<
     void | ContainerTreeItem | ContainerTreeItem[]
@@ -54,10 +43,6 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
     private readonly log: OutputChannel,
   ) {}
 
-  /**
-   * Bind the underlying `TreeView` so the provider can surface status messages
-   * (loading state, errors, "no containers" hint) via `view.message`.
-   */
   attachView(view: TreeView<ContainerTreeItem>): void {
     this.view = view;
     this.updateMessage();
@@ -71,11 +56,6 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
     }, REFRESH_DEBOUNCE_MS);
   }
 
-  /**
-   * Invalidate cached scripts for a container and force the tree to
-   * re-expand the next time the user opens it. Useful after a lifecycle
-   * command (start/stop) so the view doesn't hand back stale script lists.
-   */
   invalidateScripts(containerIdOrName: string): void {
     this.scriptsByContainer.delete(containerIdOrName);
     this.loadPromises.delete(containerIdOrName);
@@ -85,13 +65,17 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
     element?: ContainerTreeItem,
   ): ProviderResult<ContainerTreeItem[]> {
     if (!element) return this.groups;
-    if (element.kind !== "container") return [];
-    return this.getScriptChildren(element);
+    if (element.kind === "container") return this.getFolderChildren(element);
+    if (element.kind === "folder") return this.getScriptChildren(element);
+    return [];
   }
 
   getTreeItem(element: ContainerTreeItem): TreeItem {
     if (element.kind === "container") {
       return this.buildContainerItem(element);
+    }
+    if (element.kind === "folder") {
+      return this.buildFolderItem(element);
     }
     return this.buildScriptItem(element);
   }
@@ -109,7 +93,7 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
         `image: \`${element.info.image}\`\n\n` +
         `state: **${element.info.state || "unknown"}**\n\n` +
         `status: ${element.info.status}\n\n` +
-        `Expand to view \`package.json\` scripts and \`Makefile\` targets.`,
+        `Expand to view \`package.json\` scripts and \`Makefile\` targets grouped by folder.`,
     );
     tip.isTrusted = {
       enabledCommands: [
@@ -128,9 +112,41 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
     return ti;
   }
 
+  private buildFolderItem(element: ContainerFolderTreeItem): TreeItem {
+    const hasPkg = element.scripts.some((s) => s.source === "package.json");
+    const hasMake = element.scripts.some((s) => s.source === "Makefile");
+    const pkgCount = element.scripts.filter(
+      (s) => s.source === "package.json",
+    ).length;
+    const makeCount = element.scripts.filter(
+      (s) => s.source === "Makefile",
+    ).length;
+
+    const sources: string[] = [];
+    if (hasPkg) sources.push(`${pkgCount} package.json script(s)`);
+    if (hasMake) sources.push(`${makeCount} Makefile target(s)`);
+
+    const ti = new TreeItem(
+      element.folderName,
+      TreeItemCollapsibleState.Collapsed,
+    );
+    ti.description = element.folderPath;
+    const tip = new MarkdownString(
+      `**${element.folderName}**\n\n` +
+        `path: \`${element.folderPath}\`\n\n` +
+        `${sources.join("\n\n")}\n\n` +
+        `Expand to view individual scripts.`,
+    );
+    ti.tooltip = tip;
+    ti.iconPath = new ThemeIcon("folder");
+    ti.contextValue = "scriptsFolder";
+    ti.resourceUri = undefined;
+    return ti;
+  }
+
   private buildScriptItem(element: ContainerScriptTreeItem): TreeItem {
     const isPkg = element.script.source === "package.json";
-    const label = isPkg ? element.script.name : element.script.name;
+    const label = element.script.name;
     const ti = new TreeItem(label, TreeItemCollapsibleState.None);
     ti.description = element.script.command;
     ti.tooltip = new MarkdownString(
@@ -154,7 +170,7 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
     return ti;
   }
 
-  private async getScriptChildren(
+  private async getFolderChildren(
     group: ContainerGroupTreeItem,
   ): Promise<ContainerTreeItem[]> {
     if (group.info.state !== "running") return [];
@@ -168,12 +184,84 @@ export class ContainerTreeProvider implements TreeDataProvider<ContainerTreeItem
       return [];
     }
     const scripts = this.scriptsByContainer.get(group.info.id) ?? [];
-    return scripts
+    return this.groupScriptsByFolder(group.info, scripts);
+  }
+
+  private groupScriptsByFolder(
+    parentInfo: ContainerGroupTreeItem["info"],
+    scripts: ScriptEntry[],
+  ): ContainerFolderTreeItem[] {
+    const folderMap = new Map<
+      string,
+      { folderPath: string; folderName: string; scripts: ScriptEntry[] }
+    >();
+
+    for (const script of scripts) {
+      if (isInsideHiddenDir(script.filePath)) continue;
+      const { folderPath, folderName } = getParentFolderName(script.filePath);
+      if (folderName.startsWith(".")) continue;
+      if (!folderMap.has(folderPath)) {
+        folderMap.set(folderPath, {
+          folderPath,
+          folderName,
+          scripts: [],
+        });
+      }
+      folderMap.get(folderPath)!.scripts.push(script);
+    }
+
+    const entries = Array.from(folderMap.values());
+    entries.sort((a, b) => {
+      if (a.folderPath === "/" && b.folderPath !== "/") return -1;
+      if (a.folderPath !== "/" && b.folderPath === "/") return 1;
+      return a.folderPath.localeCompare(b.folderPath);
+    });
+
+    const uniqueNames = new Map<string, number>();
+    return entries.map((entry) => {
+      const displayName = this.buildDisplayName(
+        entry.folderName,
+        entry.folderPath,
+        uniqueNames,
+      );
+      return new ContainerFolderTreeItem(
+        parentInfo,
+        entry.folderPath,
+        displayName,
+        entry.scripts,
+      );
+    });
+  }
+
+  private buildDisplayName(
+    folderName: string,
+    folderPath: string,
+    uniqueNames: Map<string, number>,
+  ): string {
+    const key = folderName.toLowerCase();
+    const count = uniqueNames.get(key) ?? 0;
+    uniqueNames.set(key, count + 1);
+
+    if (count === 0) return folderName;
+
+    const parts = folderPath.split("/").filter(Boolean);
+    const parentIdx = parts.length - 2;
+    const parent = parentIdx >= 0 ? parts[parentIdx] : null;
+    if (parent) {
+      return `${parent}/${folderName}`;
+    }
+    return `${folderName} (${count + 1})`;
+  }
+
+  private async getScriptChildren(
+    folder: ContainerFolderTreeItem,
+  ): Promise<ContainerTreeItem[]> {
+    return folder.scripts
       .sort((a, b) => {
         if (a.source !== b.source) return a.source === "package.json" ? -1 : 1;
         return a.name.localeCompare(b.name);
       })
-      .map((s) => new ContainerScriptTreeItem(group.info, s));
+      .map((s) => new ContainerScriptTreeItem(folder.parentInfo, s));
   }
 
   private ensureScriptsLoaded(group: ContainerGroupTreeItem): Promise<void> {
