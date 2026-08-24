@@ -283,16 +283,16 @@
     "commit:push": "npm run commitzero -- commit --add --push"
   },
   "dependencies": {
-    "js-yaml": "^5.2.1"
+    "js-yaml": "^5.3.0"
   },
   "devDependencies": {
     "@codemastersolutions/commitzero": "^0.0.55",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^26.1.1",
-    "@types/vscode": "1.85.0",
+    "@types/node": "^26.2.0",
+    "@types/vscode": "1.134.0",
     "@vscode/vsce": "^3.9.2",
-    "esbuild": "^0.28.1",
-    "tsx": "^4.23.1",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.12",
     "typescript": "^7.0.2"
   },
   "overrides": {
